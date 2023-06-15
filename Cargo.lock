@@ -249,4 +249,5 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "wpilog-rs",
 ]

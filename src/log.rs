@@ -10,7 +10,7 @@ use crate::{
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp, error::{Error, log_result}, now,
 };
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum DataLogValue {
     Raw(Vec<u8>),
     Boolean(bool),

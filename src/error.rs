@@ -10,8 +10,8 @@ pub enum Error {
     RecordDeserialize(String),
     #[error("Record type error: {0:?}")]
     RecordType(String),
-    #[error("Record byte reader was short")]
-    RecordReaderOutOfBounds,
+    #[error("Record byte reader was short: {0}")]
+    RecordReaderOutOfBounds(&'static str),
     #[error("Attempted to modify a read only data log")]
     DataLogReadOnly,
     #[error("DataLog entry does not exist")]

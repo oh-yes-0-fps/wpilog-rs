@@ -56,7 +56,7 @@ fn chunk_by_record(all_bytes: LeBytes) -> Vec<LeBytes> {
         chunk.extend(reader.bytes(timestamp_length as usize).unwrap());
         let payload = reader.bytes(payload_length as usize).unwrap();
         chunk.extend(payload.clone());
-        let payload_size: u32 = UInts::from_binary(&payload).into();
+        let payload_size: u32 = UInts::from_binary(payload).into();
 
         if reader.bytes_left() < payload_size as usize {
             cfg_tracing! {
@@ -188,16 +188,16 @@ impl Record {
 
         let id;
         if let Ok(bin_int) = reader.bytes(id_length as usize) {
-            id = UInts::from_binary(&bin_int);
+            id = UInts::from_binary(bin_int);
         } else {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("Entry id"));
         }
 
         let timestamp;
         if let Ok(bin_int) = reader.bytes(timestamp_length as usize) {
-            timestamp = UInts::from_binary(&bin_int);
+            timestamp = UInts::from_binary(bin_int);
         } else {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("Timestamp"));
         }
 
         if let Err(err) = reader.skip(payload_length as usize) {
@@ -213,9 +213,9 @@ impl Record {
             return Err(Error::RecordType("Unsupported type: ".to_string() + &type_str));
         }
 
-        let record_data = reader.the_rest();
-        if record_data[0] == 0 {
-            if let Ok(control_record) = ControlRecord::from_binary(record_data[1..].to_vec()) {
+        let record_payload = reader.the_rest();
+        if u32::from(id) == 0u32 {
+            if let Ok(control_record) = log_result(ControlRecord::from_binary(record_payload)) {
                 cfg_tracing! { tracing::debug!("Deserialized control record"); };
                 Ok(Record::Control(control_record, timestamp.into(), id.into()))
             } else {
@@ -223,7 +223,7 @@ impl Record {
                 Err(Error::RecordDeserialize("Unsupported control record".to_string()))
             }
         } else {
-            if let Ok(data_record) = DataRecord::from_binary(record_data[1..].to_vec(), type_str) {
+            if let Ok(data_record) = log_result(DataRecord::from_binary(record_payload, type_str)) {
                 cfg_tracing! { tracing::debug!("Deserialized data record"); };
                 Ok(Record::Data(data_record, timestamp.into(), id.into()))
             } else {
@@ -343,17 +343,17 @@ impl ControlRecord {
             0 => {
                 if let Ok(name_len) = reader.u32() { //checks name bytes
                     if reader.bytes_left() < name_len as usize {
-                        return Err(Error::RecordReaderOutOfBounds);
+                        return Err(Error::RecordReaderOutOfBounds("Start control record name"));
                     }
                     let name = reader.string(name_len as usize).unwrap();
                     if let Ok(type_len) = reader.u32() { //checks type bytes
                         if reader.bytes_left() < type_len as usize {
-                            return Err(Error::RecordReaderOutOfBounds);
+                            return Err(Error::RecordReaderOutOfBounds("Start control record type"));
                         }
                         let entry_type = reader.string(type_len as usize).unwrap();
                         if let Ok(metadata_len) = reader.u32() { //checks metadata bytes
                             if reader.bytes_left() < metadata_len as usize {
-                                return Err(Error::RecordReaderOutOfBounds);
+                                return Err(Error::RecordReaderOutOfBounds("Start control record metadata"));
                             }
                             let entry_metadata = reader.string(metadata_len as usize).unwrap();
                             return Ok(ControlRecord::Start(name, entry_type, entry_metadata));
@@ -361,17 +361,17 @@ impl ControlRecord {
                     }
                 }
                 //one of the checks above failed
-                Err(Error::RecordReaderOutOfBounds)
+                Err(Error::RecordReaderOutOfBounds("Start control record"))
             }
             1 => Ok(ControlRecord::Finish),
             2 => {
                 if let Ok(metadata_len) = reader.u32() {
                     if reader.bytes_left() != metadata_len as usize {
-                        return Err(Error::RecordReaderOutOfBounds);
+                        return Err(Error::RecordReaderOutOfBounds("Metadata control record string"));
                     }
                     Ok(ControlRecord::Metadata(reader.string(metadata_len as usize).unwrap()))
                 } else {
-                    Err(Error::RecordReaderOutOfBounds)
+                    Err(Error::RecordReaderOutOfBounds("Metadata control record length"))
                 }
             }
             _ => unimplemented!(),
@@ -443,7 +443,7 @@ impl DataRecord {
 
     pub fn from_binary(bytes: LeBytes, type_str: String) -> Result<Self, Error> {
         if bytes.len() < 1 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("Bytes len is 0"));
         }
         Self::from_binary_inner(bytes, type_str)
     }
@@ -533,28 +533,28 @@ impl DataRecord {
                 if let Ok(i) = reader.i64() {
                     Ok(DataRecord::Integer(i))
                 } else {
-                    Err(Error::RecordReaderOutOfBounds)
+                    Err(Error::RecordReaderOutOfBounds("Int64"))
                 }
             }
             "float" => {
                 if let Ok(f) = reader.f32() {
                     Ok(DataRecord::Float(f))
                 } else {
-                    Err(Error::RecordReaderOutOfBounds)
+                    Err(Error::RecordReaderOutOfBounds("Float"))
                 }
             }
             "double" => {
                 if let Ok(d) = reader.f64() {
                     Ok(DataRecord::Double(d))
                 } else {
-                    Err(Error::RecordReaderOutOfBounds)
+                    Err(Error::RecordReaderOutOfBounds("Double"))
                 }
             }
             "string" => {
                 if let Ok(s) = reader.string(reader.bytes_left()) {
                     Ok(DataRecord::String(s))
                 } else {
-                    Err(Error::RecordReaderOutOfBounds)
+                    Err(Error::RecordReaderOutOfBounds("String"))
                 }
             }
             "boolean[]" => {
@@ -590,7 +590,7 @@ impl DataRecord {
                 while reader.bytes_left() >= 4 {
                     let len = reader.u32().unwrap();
                     if reader.bytes_left() < len as usize {
-                        return Err(Error::RecordReaderOutOfBounds);
+                        return Err(Error::RecordReaderOutOfBounds("String[]"));
                     }
                     strings.push(reader.string(len as usize).unwrap());
                 }

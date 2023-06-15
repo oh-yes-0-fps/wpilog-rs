@@ -8,6 +8,9 @@ pub(crate) mod records;
 pub(crate) mod util;
 pub mod error;
 
+#[cfg(test)]
+mod test;
+
 ///Microseconds
 type WpiTimestamp = u64;
 ///A unique identifier for a data entry

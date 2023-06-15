@@ -2,7 +2,7 @@
 
 use crate::error::Error;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UInts {
     U8(u8),
     U16(u16),
@@ -81,13 +81,33 @@ impl UInts {
     }
 
     #[inline(always)]
-    pub fn from_binary(le_bytes: &[u8]) -> Self {
+    pub fn from_binary(le_bytes: Vec<u8>) -> Self {
         match le_bytes.len() {
-            1 => UInts::U8(u8::from_le_bytes(le_bytes.try_into().unwrap())),
-            2 => UInts::U16(u16::from_le_bytes(le_bytes.try_into().unwrap())),
-            4 => UInts::U32(u32::from_le_bytes(le_bytes.try_into().unwrap())),
-            8 => UInts::U64(u64::from_le_bytes(le_bytes.try_into().unwrap())),
-            16 => UInts::U128(u128::from_le_bytes(le_bytes.try_into().unwrap())),
+            1 => UInts::U8({
+                let mut bytes = [0; 1];
+                bytes.copy_from_slice(&le_bytes);
+                u8::from_le_bytes(bytes)
+            }),
+            2 => UInts::U16({
+                let mut bytes = [0; 2];
+                bytes.copy_from_slice(&le_bytes);
+                u16::from_le_bytes(bytes)
+            }),
+            4 => UInts::U32({
+                let mut bytes = [0; 4];
+                bytes.copy_from_slice(&le_bytes);
+                u32::from_le_bytes(bytes)
+            }),
+            8 => UInts::U64({
+                let mut bytes = [0; 8];
+                bytes.copy_from_slice(&le_bytes);
+                u64::from_le_bytes(bytes)
+            }),
+            16 => UInts::U128({
+                let mut bytes = [0; 16];
+                bytes.copy_from_slice(&le_bytes);
+                u128::from_le_bytes(bytes)
+            }),
             _ => panic!("Invalid byte length"),
         }
     }
@@ -267,7 +287,7 @@ impl RecordByteReader {
     #[inline]
     pub fn u32(&mut self) -> Result<u32, Error> {
         if self.bytes_left() < 4 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("u32"));
         }
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 4]);
@@ -278,7 +298,7 @@ impl RecordByteReader {
     #[inline]
     pub fn u64(&mut self) -> Result<u64, Error> {
         if self.bytes_left() < 8 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("u64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -289,7 +309,7 @@ impl RecordByteReader {
     #[inline]
     pub fn i64(&mut self) -> Result<i64, Error> {
         if self.bytes_left() < 8 {
-            panic!("RecordReaderOutOfBounds");
+            return Err(Error::RecordReaderOutOfBounds("i64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -300,7 +320,7 @@ impl RecordByteReader {
     #[inline]
     pub fn bool(&mut self) -> Result<bool, Error> {
         if self.bytes_left() < 1 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("bool"));
         }
         let mut bytes = [0u8; 1];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 1]);
@@ -311,7 +331,7 @@ impl RecordByteReader {
     #[inline]
     pub fn u8(&mut self) -> Result<u8, Error> {
         if self.bytes_left() < 1 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("u8"));
         }
         let mut bytes = [0u8; 1];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 1]);
@@ -322,7 +342,7 @@ impl RecordByteReader {
     #[inline]
     pub fn string(&mut self, len: usize) -> Result<String, Error> {
         if self.bytes_left() < len {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("string"));
         }
         let mut bytes = vec![0u8; len];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + len]);
@@ -333,7 +353,7 @@ impl RecordByteReader {
     #[inline]
     pub fn f32(&mut self) -> Result<f32, Error> {
         if self.bytes_left() < 4 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("f32"));
         }
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 4]);
@@ -344,7 +364,7 @@ impl RecordByteReader {
     #[inline]
     pub fn f64(&mut self) -> Result<f64, Error> {
         if self.bytes_left() < 8 {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("f64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -355,7 +375,7 @@ impl RecordByteReader {
     #[inline]
     pub fn bytes(&mut self, len: usize) -> Result<Vec<u8>, Error> {
         if self.bytes_left() < len {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("bytes"));
         }
         let mut bytes = vec![0u8; len];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + len]);
@@ -366,7 +386,7 @@ impl RecordByteReader {
     #[inline]
     pub fn skip(&mut self, len: usize) -> Result<(), Error> {
         if self.bytes_left() < len {
-            return Err(Error::RecordReaderOutOfBounds);
+            return Err(Error::RecordReaderOutOfBounds("skip"));
         }
         self.index += len;
         Ok(())
