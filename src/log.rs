@@ -269,6 +269,7 @@ impl DataLog {
         if let Err(err) = this.fs_file.as_mut().unwrap().write_all(&header) {
             return Err(Error::Io(err));
         }
+        this.fs_file.as_mut().unwrap().flush()?;
 
         Ok(this)
     }
