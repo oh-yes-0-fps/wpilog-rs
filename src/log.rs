@@ -795,6 +795,7 @@ impl DataLogDaemon {
                 }
                 if cycle_count > 5 {
                     updater.update(log.get_all_entries()).ok();
+                    log.flush().ok();
                     cycle_count = 0;
                 }
             }
