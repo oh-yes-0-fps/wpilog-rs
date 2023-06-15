@@ -9,6 +9,7 @@ use crate::{
     records::{parse_records, Record, ControlRecord},
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp, error::{Error, log_result}, now,
 };
+use single_value_channel::{channel_starting_with as single_channel, Receiver as SingleReceiver};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum DataLogValue {
@@ -768,12 +769,16 @@ impl DataLogDaemonSender {
 pub struct DataLogDaemon {
     thread_handle: Option<JoinHandle<()>>,
     sender: Sender<(EntryName, Record)>,
+    receiver: SingleReceiver<Vec<DatalogEntryResponse>>
 }
 impl DataLogDaemon {
     fn spawn(datalog: DataLog) -> DataLogDaemon {
         let (sender, receiver) = channel::<(EntryName, Record)>();
+        let (updatee, updater) = 
+            single_channel::<Vec<DatalogEntryResponse>>(Vec::new());
         let thread_handle = thread::spawn(move || {
             let mut log = datalog;
+            let mut cycle_count = 0;
             loop {
                 let data = receiver.recv().unwrap();
                 if data.0.len() == 0 {
@@ -788,11 +793,16 @@ impl DataLogDaemon {
                         old_rec.as_data().unwrap().clone(), old_rec.get_timestamp(), *id.unwrap());
                     log.add_record(new_rec).ok();
                 }
+                if cycle_count > 5 {
+                    updater.update(log.get_all_entries()).ok();
+                    cycle_count = 0;
+                }
             }
         });
         DataLogDaemon {
             thread_handle: Some(thread_handle),
             sender,
+            receiver: updatee,
         }
     }
 
@@ -801,6 +811,10 @@ impl DataLogDaemon {
             closed: false,
             sender: self.sender.clone(),
         }
+    }
+
+    pub fn get_all_entries(&mut self) -> &Vec<DatalogEntryResponse> {
+        self.receiver.latest()
     }
 
     pub fn is_alive(&self) -> bool {
