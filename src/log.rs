@@ -480,7 +480,11 @@ impl DataLog {
             cfg_tracing! { tracing::warn!("Attempted to create existing entry"); };
             return Err(Error::EntryAlreadyExists);
         }
-        let next_id = *self.entries.keys().max().unwrap() + 1;
+        let next_id = if !self.entries.is_empty() {
+            *self.entries.keys().max().unwrap() + 1
+        } else {
+            1
+        };
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let record = Record::Control(ControlRecord::Start(entry_name.clone(), entry_type.clone(), metadata.clone()), timestamp, next_id);
         self.id_to_name_map.insert(next_id, entry_name.clone());
