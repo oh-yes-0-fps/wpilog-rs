@@ -456,6 +456,10 @@ impl DataLog {
 //write stuff
 impl DataLog {
     pub fn append_to_entry(&mut self, entry_name: String, value: DataLogValue) -> Result<(), Error>{
+        self.append_to_entry_timestamp(entry_name, value, now())
+    }
+
+    pub fn append_to_entry_timestamp(&mut self, entry_name: String, value: DataLogValue, timestamp: WpiTimestamp) -> Result<(), Error>{
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
             return Err(Error::DataLogReadOnly);
@@ -465,12 +469,15 @@ impl DataLog {
             cfg_tracing! { tracing::warn!("Attempted to append to non-existent entry"); };
             return Err(Error::NoSuchEntry);
         }
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let record = Record::Data(value.into(), timestamp, *entry_id.unwrap());
         self.add_record(record)
     }
 
     pub fn create_entry(&mut self, entry_name: String, entry_type: String, metadata: String) -> Result<(), Error> {
+        self.create_entry_timestamp(entry_name, entry_type, metadata, now())
+    }
+
+    pub fn create_entry_timestamp(&mut self, entry_name: String, entry_type: String, metadata: String, timestamp: WpiTimestamp) -> Result<(), Error> {
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
             return Err(Error::DataLogReadOnly);
@@ -480,12 +487,7 @@ impl DataLog {
             cfg_tracing! { tracing::warn!("Attempted to create existing entry"); };
             return Err(Error::EntryAlreadyExists);
         }
-        let next_id = if !self.entries.is_empty() {
-            *self.entries.keys().max().unwrap() + 1
-        } else {
-            1
-        };
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let next_id = *self.entries.keys().max().unwrap() + 1;
         let record = Record::Control(ControlRecord::Start(entry_name.clone(), entry_type.clone(), metadata.clone()), timestamp, next_id);
         self.id_to_name_map.insert(next_id, entry_name.clone());
         self.add_record(record)
