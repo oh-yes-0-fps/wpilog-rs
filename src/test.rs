@@ -24,22 +24,25 @@ fn test_uint_enum() {
     assert_eq!(u64::from(decoded_timestamp), u64::from(min_size_timestamp));
 }
 
-#[test]
-fn test_record_binary() {
+
+fn test_record_type(payload: DataLogValue) {
     let timestamp = now();
     let entry_id = 2u32.pow(24);
     let timestamp_size = UInts::from(timestamp).get_min_size().get_byte_count();
     let entry_id_size = UInts::from(entry_id).get_min_size().get_byte_count();
-    let record = Record::Data(DataRecord::Double(1.0), timestamp, entry_id);
+    let data_record = DataRecord::from(payload.clone());
+    let payload_package_size = data_record.binary_payload_size();
+    let payload_len_size = UInts::from(payload_package_size as u32).get_min_size().get_byte_count();
+    let record = Record::Data(data_record, timestamp, entry_id);
     let bytes = record.to_binary();
     assert_eq!(bytes.len(),
         1 /*bit field */
         + entry_id_size
-        + 1 /*payload size int */
+        + payload_len_size
         + timestamp_size
-        + 8 /*payload (f64) */);
+        + payload_package_size);
 
-    let entry_type_map = HashMap::from([(entry_id, String::from("double"))]);
+    let entry_type_map = HashMap::from([(entry_id, payload.get_data_type())]);
     let rerecord = Record::from_binary(bytes, &entry_type_map).unwrap();
     assert_eq!(rerecord.is_data(), record.is_data());
     assert_eq!(rerecord.get_id(), record.get_id());
@@ -50,19 +53,36 @@ fn test_record_binary() {
 }
 
 #[test]
+fn test_record_types() {
+    test_record_type(DataLogValue::Boolean(true));
+    test_record_type(DataLogValue::Integer(10));
+    test_record_type(DataLogValue::Float(10.0));
+    test_record_type(DataLogValue::Double(10.0));
+    test_record_type(DataLogValue::String(String::from("owo")));
+    test_record_type(DataLogValue::Raw(vec![1, 2, 3]));
+    test_record_type(DataLogValue::BooleanArray(vec![true, false, true]));
+    test_record_type(DataLogValue::IntegerArray(vec![1, 2, 3]));
+    test_record_type(DataLogValue::FloatArray(vec![1.0, 2.0, 3.0]));
+    test_record_type(DataLogValue::DoubleArray(vec![1.0, 2.0, 3.0]));
+    test_record_type(DataLogValue::StringArray(vec![String::from("owo"), String::from("uwu")]));
+} 
+
+#[test]
 fn basic_le_byte_read() {
-    let val: f64 = 10.0;
+    let val: u64 = 10;
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&val.to_le_bytes());
 
     let mut new_bytes = [0u8; 8];
     new_bytes.copy_from_slice(&bytes);
-    let read_val = f64::from_le_bytes(new_bytes);
+    let read_val = u64::from_le_bytes(new_bytes);
     assert_eq!(read_val, val);
 }
 
 #[test]
 fn test_read_and_save() {
+
+
     tracing_subscriber::fmt::init();
 
     let file_path = PathBuf::from("data_log.wpilog");
@@ -71,7 +91,6 @@ fn test_read_and_save() {
 
     let config = CreateDataLogConfig {
         file_path: file_path.clone(),
-        can_retro: false,
         metadata: String::from("owo meta data"),
     };
 
@@ -96,7 +115,6 @@ fn test_read_and_save() {
 
     let config = OpenDataLogConfig {
         file_path: file_path.clone(),
-        can_retro: false,
         io_type: IOType::ReadOnly,
     };
 

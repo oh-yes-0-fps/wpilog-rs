@@ -340,6 +340,17 @@ impl RecordByteReader {
     }
 
     #[inline]
+    pub fn u16(&mut self) -> Result<u16, Error> {
+        if self.bytes_left() < 2 {
+            return Err(Error::RecordReaderOutOfBounds("u16"));
+        }
+        let mut bytes = [0u8; 2];
+        bytes.copy_from_slice(&self.bytes[self.index..self.index + 2]);
+        self.index += 2;
+        Ok(u16::from_le_bytes(bytes))
+    }
+
+    #[inline]
     pub fn string(&mut self, len: usize) -> Result<String, Error> {
         if self.bytes_left() < len {
             return Err(Error::RecordReaderOutOfBounds("string"));

@@ -47,26 +47,26 @@ fn chunk_by_record(all_bytes: LeBytes) -> Vec<LeBytes> {
 
         if reader.bytes_left() < (id_length + timestamp_length + payload_length) as usize {
             cfg_tracing! {
-                tracing::error!("Record reader was short");
+                tracing::error!("Record reader was short for chunk by record");
             }
             continue;
         }
 
         chunk.extend(reader.bytes(id_length as usize).unwrap());
-        chunk.extend(reader.bytes(timestamp_length as usize).unwrap());
         let payload = reader.bytes(payload_length as usize).unwrap();
         chunk.extend(payload.clone());
+        chunk.extend(reader.bytes(timestamp_length as usize).unwrap());
         let payload_size: u32 = UInts::from_binary(payload).into();
 
         if reader.bytes_left() < payload_size as usize {
             cfg_tracing! {
-                tracing::error!("Record reader was short");
+                tracing::error!("Record reader was short for chunk by record payload");
             }
             continue;
         }
 
         chunk.extend(reader.bytes(payload_size as usize).unwrap());
-        chunks.push(chunk.into());
+        chunks.push(chunk);
     }
     chunks
 }
@@ -89,6 +89,7 @@ pub fn parse_records(all_bytes: LeBytes) -> Vec<Record> {
     }
     //sort the records based on timestamp, earliest first
     records.sort_by(|a, b| a.get_timestamp().cmp(&b.get_timestamp()));
+    // records.sort_by(|a, b| b.get_timestamp().cmp(&a.get_timestamp()));
     records
 }
 
@@ -193,6 +194,10 @@ impl Record {
             return Err(Error::RecordReaderOutOfBounds("Entry id"));
         }
 
+        if let Err(err) = reader.skip(payload_length as usize) {
+            return Err(err);
+        }
+
         let timestamp;
         if let Ok(bin_int) = reader.bytes(timestamp_length as usize) {
             timestamp = UInts::from_binary(bin_int);
@@ -200,24 +205,22 @@ impl Record {
             return Err(Error::RecordReaderOutOfBounds("Timestamp"));
         }
 
-        if let Err(err) = reader.skip(payload_length as usize) {
-            return Err(err);
-        }
-
         let type_str = type_map
             .get(&u32::from(id))
             .unwrap_or(&"unknown".to_string())
             .clone();
 
-        if !SUPPORTED_TYPES.contains(&type_str.as_str()) {
+        let is_control = u32::from(id) == 0u32;
+
+        if !SUPPORTED_TYPES.contains(&type_str.as_str()) && !is_control {
             return Err(Error::RecordType("Unsupported type: ".to_string() + &type_str));
         }
 
         let record_payload = reader.the_rest();
-        if u32::from(id) == 0u32 {
+        if is_control {
             if let Ok(control_record) = log_result(ControlRecord::from_binary(record_payload)) {
                 cfg_tracing! { tracing::debug!("Deserialized control record"); };
-                Ok(Record::Control(control_record, timestamp.into(), id.into()))
+                Ok(Record::Control(control_record.0, timestamp.into(), control_record.1))
             } else {
                 cfg_tracing! { tracing::warn!("Unsupported control record"); };
                 Err(Error::RecordDeserialize("Unsupported control record".to_string()))
@@ -281,7 +284,6 @@ impl ControlRecord {
             ControlRecord::Metadata(entry_metadata) => Some(entry_metadata),
         }
     }
-
     pub fn to_binary(&self, timestamp: WpiTimestamp, id: EntryId) -> LeBytes {
         match self {
             ControlRecord::Start(name, entry_type, entry_metadata) => {
@@ -336,9 +338,10 @@ impl ControlRecord {
         }
     }
 
-    pub fn from_binary(bytes: LeBytes) -> Result<Self, Error> {
+    pub fn from_binary(bytes: LeBytes) -> Result<(Self, EntryId), Error> {
         let mut reader = RecordByteReader::new(bytes);
         let control_type = reader.u8().unwrap();
+        let entry_id = reader.u32().unwrap();
         match control_type {
             0 => {
                 if let Ok(name_len) = reader.u32() { //checks name bytes
@@ -356,20 +359,20 @@ impl ControlRecord {
                                 return Err(Error::RecordReaderOutOfBounds("Start control record metadata"));
                             }
                             let entry_metadata = reader.string(metadata_len as usize).unwrap();
-                            return Ok(ControlRecord::Start(name, entry_type, entry_metadata));
+                            return Ok((ControlRecord::Start(name, entry_type, entry_metadata), entry_id));
                         }
                     }
                 }
                 //one of the checks above failed
                 Err(Error::RecordReaderOutOfBounds("Start control record"))
             }
-            1 => Ok(ControlRecord::Finish),
+            1 => Ok((ControlRecord::Finish, entry_id)),
             2 => {
                 if let Ok(metadata_len) = reader.u32() {
                     if reader.bytes_left() != metadata_len as usize {
                         return Err(Error::RecordReaderOutOfBounds("Metadata control record string"));
                     }
-                    Ok(ControlRecord::Metadata(reader.string(metadata_len as usize).unwrap()))
+                    Ok((ControlRecord::Metadata(reader.string(metadata_len as usize).unwrap()), entry_id))
                 } else {
                     Err(Error::RecordReaderOutOfBounds("Metadata control record length"))
                 }
@@ -448,6 +451,10 @@ impl DataRecord {
         Self::from_binary_inner(bytes, type_str)
     }
 
+    pub fn binary_payload_size(&self) -> usize {
+        self.to_binary_inner().len()
+    }
+
     fn to_binary_inner(&self) -> LeBytes {
         match self {
             DataRecord::Raw(data) => data.clone(),
@@ -478,7 +485,6 @@ impl DataRecord {
             }
             DataRecord::BooleanArray(data) => {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 for b in data {
                     bytes.push(*b as u8);
                 }
@@ -486,7 +492,6 @@ impl DataRecord {
             }
             DataRecord::IntegerArray(data) => {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 for i in data {
                     bytes.extend_from_slice(&i.to_le_bytes());
                 }
@@ -494,7 +499,6 @@ impl DataRecord {
             }
             DataRecord::FloatArray(data) => {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 for f in data {
                     bytes.extend_from_slice(&f.to_le_bytes());
                 }
@@ -502,7 +506,6 @@ impl DataRecord {
             }
             DataRecord::DoubleArray(data) => {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 for d in data {
                     bytes.extend_from_slice(&d.to_le_bytes());
                 }
@@ -510,7 +513,6 @@ impl DataRecord {
             }
             DataRecord::StringArray(data) => {
                 let mut bytes = Vec::new();
-                bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 for s in data {
                     let len = s.len() as u32;
                     bytes.extend_from_slice(&len.to_le_bytes());

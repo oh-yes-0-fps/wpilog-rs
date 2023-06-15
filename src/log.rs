@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::{File, OpenOptions, self},
-    io::{Read, Write}, time::{SystemTime, UNIX_EPOCH}, path::PathBuf, sync::{mpsc::{Sender, channel}}, thread::{JoinHandle, self},
+    io::{Read, Write}, path::PathBuf, sync::{mpsc::{Sender, channel}}, thread::{JoinHandle, self},
 };
 
 
@@ -75,6 +75,7 @@ pub(crate) struct Entry {
     pub metadata: EntryMetadata,
     pub lifetime: EntryLifeStatus,
     pub unflushed_timestamps: HashSet<WpiTimestamp>,
+    pub latest_timestamp: WpiTimestamp,
 }
 impl Entry {
     pub(crate) fn new(name: EntryName, id: EntryId, type_str: EntryType, metadata: EntryMetadata, timestamp: WpiTimestamp) -> Self {
@@ -85,7 +86,8 @@ impl Entry {
             type_str,
             metadata,
             lifetime: EntryLifeStatus::Alive(timestamp),
-            unflushed_timestamps: HashSet::new(),
+            unflushed_timestamps: HashSet::from([timestamp]),
+            latest_timestamp: timestamp,
         }
     }
 
@@ -98,6 +100,7 @@ impl Entry {
         match self.lifetime {
             EntryLifeStatus::Alive(start) => {
                 self.lifetime = EntryLifeStatus::Dead(start, timestamp);
+                self.unflushed_timestamps.insert(timestamp);
             },
             _ => {},
         }
@@ -147,16 +150,20 @@ impl Entry {
                 lifespan.0, self.id));
             self.unflushed_timestamps.remove(&lifespan.0);
         }
+        let mut opt_finish = None;
+        if let Some(end) = lifespan.1 {
+            if self.unflushed_timestamps.contains(&end) {
+                opt_finish = Some(
+                    Record::Control(ControlRecord::Finish, end, self.id));
+            }
+        }
         for timestamp in self.unflushed_timestamps.drain() {
             if let Some(value) = self.marks.get(&timestamp) {
                 records.push(Record::Data(value.clone().into(), timestamp, self.id));
             }
         }
-        if let Some(end) = lifespan.1 {
-            if self.unflushed_timestamps.contains(&end) {
-                records.push(
-                    Record::Control(ControlRecord::Finish, end, self.id));
-            }
+        if let Some(finish) = opt_finish {
+            records.push(finish);
         }
         records
     }
@@ -174,9 +181,6 @@ pub struct CreateDataLogConfig {
     pub file_path: PathBuf,
     ///metadata for the file header
     pub metadata: String,
-    ///whether or not to allow retro-logging,
-    /// this has performance implications
-    pub can_retro: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -185,9 +189,6 @@ pub struct OpenDataLogConfig {
     pub file_path: PathBuf,
     ///the type of io to use
     pub io_type: IOType,
-    ///whether or not to allow retro-logging,
-    /// this has performance implications
-    pub can_retro: bool,
 }
 
 
@@ -197,14 +198,12 @@ pub struct DataLog {
     file_name: String,
     fs_file: Option<File>,
     io_type: IOType,
-    can_retro: bool,
     //data
     format_version: (u8, u8),
     header_metadata: String,
     id_to_name_map: EntryIdToNameMap,
     entries: HashMap<EntryId, Entry>,
     finished_entries: HashSet<EntryId>,
-    latest_timestamp: WpiTimestamp,
 }
 
 impl DataLog {
@@ -236,20 +235,17 @@ impl DataLog {
             file_name: config.file_path.to_str().unwrap().to_string(),
             fs_file: None,
             io_type: IOType::ReadWrite,
-            can_retro: config.can_retro,
             format_version: (1, 0),
             header_metadata: config.metadata,
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
-            latest_timestamp: 0,
         };
         let file = 
             OpenOptions::new()
                 .read(true)
                 .create(true)
-                .write(true)
-                .append(!this.can_retro)
+                .append(true)
                 .open(&this.file_name);
         if file.is_err() {
             return Err(Error::Io(file.err().unwrap()));
@@ -285,20 +281,17 @@ impl DataLog {
             file_name: config.file_path.to_str().unwrap().to_string(),
             fs_file: None,
             io_type: config.io_type,
-            can_retro: config.can_retro,
             format_version: (0, 0),
             header_metadata: String::new(),
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
-            latest_timestamp: 0,
         };
 
         let file = 
             OpenOptions::new()
                 .read(true)
-                .write(this.io_type == IOType::ReadWrite)
-                .append(!this.can_retro && this.io_type == IOType::ReadWrite)
+                .append(this.io_type == IOType::ReadWrite)
                 .open(&this.file_name);
         if file.is_err() {
             return Err(Error::Io(file.err().unwrap()));
@@ -330,11 +323,12 @@ impl DataLog {
         index += 4;
         //parse next metadata_len bytes as metadata
         self.header_metadata = String::from_utf8(bytes[index..index + metadata_len as usize].to_vec()).unwrap();
+        cfg_tracing! { tracing::info!("Metadata: {}", self.header_metadata); };
         //skip metadata_len bytes
         index += metadata_len as usize;
 
         //pass the rest of the bytes into parse record
-        let records = parse_records(bytes[index..].to_vec());
+        let records = parse_records(bytes[index..bytes.len()].to_vec());
         for record in records {
             log_result(self.add_record(record)).ok();
         }
@@ -357,6 +351,8 @@ impl DataLog {
                     let entry_id = record.get_id();
                     let entry_metadata = control_rec.get_entry_metadata().unwrap().clone();
                     let timestamp = record.get_timestamp();
+
+                    self.id_to_name_map.insert(entry_id, entry_name.clone());
 
                     let entry = Entry::new(
                         entry_name, entry_id, entry_type, entry_metadata, timestamp);
@@ -407,22 +403,17 @@ impl DataLog {
 
             //chronological check
             let timestamp = record.get_timestamp();
-            if timestamp > self.latest_timestamp {
-                self.latest_timestamp = timestamp;
+            if timestamp >= entry.latest_timestamp {
+                entry.latest_timestamp = timestamp;
                 entry.add_mark(timestamp, data_rec.clone().into())
             } else if timestamp < entry.get_lifespan().0 {
                 //timestamp is before the entry was started
-                cfg_tracing!(tracing::warn!("Received data thats too retro"););
+                cfg_tracing!(tracing::warn!("Received data thats too befor an entry was started"););
                 return Err(Error::RetroEntryData);
-            } else if timestamp < self.latest_timestamp {
+            } else if timestamp < entry.latest_timestamp {
                 //timestamp is before the latest timestamp but after the entry was started
-                cfg_tracing! { tracing::debug!("Received retro data"); };
-                if !self.can_retro {
-                    cfg_tracing! { tracing::warn!("Received retro data in append mode"); };
-                    return Err(Error::RetroEntryData);
-                } else {
-                    entry.add_mark(timestamp, data_rec.clone().into())
-                }
+                cfg_tracing! { tracing::warn!("Received retro data in append mode"); };
+                return Err(Error::RetroEntryData);
             }
             cfg_tracing! { tracing::debug!("Received data for entry {:?}", entry.name); };
             Ok(())
@@ -493,7 +484,6 @@ impl DataLog {
             1
         };
         let record = Record::Control(ControlRecord::Start(entry_name.clone(), entry_type.clone(), metadata.clone()), timestamp, next_id);
-        self.id_to_name_map.insert(next_id, entry_name.clone());
         self.add_record(record)
     }
 
@@ -507,8 +497,7 @@ impl DataLog {
             cfg_tracing! { tracing::warn!("Attempted to finish non-existent entry"); };
             return Err(Error::NoSuchEntry);
         }
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-        let record = Record::Control(ControlRecord::Finish, timestamp, *entry_id.unwrap());
+        let record = Record::Control(ControlRecord::Finish, now(), *entry_id.unwrap());
         self.add_record(record)
     }
 
