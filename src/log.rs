@@ -635,30 +635,32 @@ impl DataLog {
         }
     }
 
-    pub fn get_entry_value(&self, entry_name: EntryName, when: WpiTimestamp) -> Result<DataLogResponse, ()> {
+    pub fn get_entry_value(&self, entry_name: EntryName, when: WpiTimestamp) -> Result<DataLogResponse, Error> {
         if let Some(entry) = self.get_entry_from_name(&entry_name) {
             //is timestamp within the entry's lifetime?
             let lifespan = entry.get_lifespan();
             if when < lifespan.0 {
-                Err(())
+                Err(Error::OutsideEntryLifetime)
             } else if let Some(end_time) = lifespan.1 {
                 if when > end_time {
-                    Err(())
+                    Err(Error::OutsideEntryLifetime)
                 } else {
-                    DataLog::get_value_just_before_timestamp(entry, when).ok_or(())
+                    DataLog::get_value_just_before_timestamp(entry, when).ok_or(
+                        Error::OutsideEntryLifetime)
                 }
             } else {
-                DataLog::get_value_just_before_timestamp(entry, when).ok_or(())
+                DataLog::get_value_just_before_timestamp(entry, when).ok_or(
+                    Error::OutsideEntryLifetime)
             }
         } else {
-            Err(())
+            Err(Error::NoSuchEntry)
         }
     }
 
-    pub fn get_last_entry_value(&self, entry_name: EntryName) -> Result<DataLogResponse, ()> {
+    pub fn get_last_entry_value(&self, entry_name: EntryName) -> Result<DataLogResponse, Error> {
         if let Some(entry) = self.get_entry_from_name(&entry_name) {
             if entry.marks.keys().len() == 0 {
-                Err(())
+                Err(Error::OutsideEntryLifetime)
             } else {
                 let key = entry.marks.keys().max().unwrap();
                 Ok(DataLogResponse {
@@ -668,7 +670,7 @@ impl DataLog {
                 })
             }
         } else {
-            Err(())
+            Err(Error::NoSuchEntry)
         }
     }
 

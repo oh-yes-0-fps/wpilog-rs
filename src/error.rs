@@ -16,6 +16,8 @@ pub enum Error {
     DataLogReadOnly,
     #[error("DataLog entry does not exist")]
     NoSuchEntry,
+    #[error("Outside entry lifetime")]
+    OutsideEntryLifetime,
     #[error("DataLog entry already exists")]
     EntryAlreadyExists,
     #[error("Dile not a valid DataLog")]
