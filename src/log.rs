@@ -781,23 +781,26 @@ impl DataLogDaemon {
             let mut log = datalog;
             let mut cycle_count = 0;
             loop {
-                let data = receiver.recv().unwrap();
-                if data.0.len() == 0 {
-                    log.add_record(data.1).ok();
-                } else {
-                    let id = log.get_entry_id(&data.0);
-                    if id.is_none() {
-                        continue;
+                if let Ok(data) = receiver.try_recv() {
+                    if data.0.len() == 0 {
+                        log.add_record(data.1).ok();
+                    } else {
+                        let id = log.get_entry_id(&data.0);
+                        if id.is_none() {
+                            continue;
+                        }
+                        let old_rec = data.1;
+                        let new_rec = Record::Data(
+                            old_rec.as_data().unwrap().clone(), old_rec.get_timestamp(), *id.unwrap());
+                        log.add_record(new_rec).ok();
                     }
-                    let old_rec = data.1;
-                    let new_rec = Record::Data(
-                        old_rec.as_data().unwrap().clone(), old_rec.get_timestamp(), *id.unwrap());
-                    log.add_record(new_rec).ok();
-                }
-                if cycle_count > 5 {
-                    updater.update(log.get_all_entries()).ok();
-                    log.flush().ok();
-                    cycle_count = 0;
+                    if cycle_count > 5 {
+                        updater.update(log.get_all_entries()).ok();
+                        log.flush().ok();
+                        cfg_tracing! {
+                            tracing::info!("Updated datalog");}
+                        cycle_count = 0;
+                    }
                 }
             }
         });
