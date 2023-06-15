@@ -2,6 +2,9 @@
 name = "wpilog-rs"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/oh-yes-0-fps/wpilog-rs"
+description = "An implementation of WPI's DataLog spec"
 
 [dependencies]
 bimap = "0.6.3"
