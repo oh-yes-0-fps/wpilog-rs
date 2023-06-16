@@ -865,7 +865,7 @@ impl DataLogDaemon {
             let mut cycle_count = 0;
             loop {
                 cfg_tracing! {
-                tracing::debug!("Updated datalog");}
+                tracing::info!("Updated datalog");}
                 if let Ok(data) = receiver.try_recv() {
                     if data.0.len() == 0 {
                         log.add_record(data.1).ok();
