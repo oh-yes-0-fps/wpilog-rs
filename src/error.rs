@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum WpilogError {
     #[error("DataLog io error: {0:?}")]
     Io(#[from] std::io::Error),
     #[error("Record serialization error: {0:?}")]
@@ -29,7 +29,9 @@ pub enum Error {
     #[error("Retro entry data")]
     RetroEntryData,
     #[error("DataLogDaemon unreachable: {0:?}")]
-    DataLogDaemonUnreachable(#[from] std::sync::mpsc::SendError<(std::string::String, crate::records::Record)>),
+    DataLogDaemonUnreachable(
+        #[from] std::sync::mpsc::SendError<(std::string::String, crate::records::Record)>,
+    ),
     #[error("DataLogDaemon closed")]
     DataLogDaemonClosed,
 }
