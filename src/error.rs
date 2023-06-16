@@ -1,3 +1,4 @@
+use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -34,6 +35,12 @@ pub enum DatalogError {
     ),
     #[error("DataLogDaemon closed")]
     DataLogDaemonClosed,
+}
+
+impl Serialize for DatalogError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(format!("{}", self).as_str())
+    }
 }
 
 #[inline(always)]
