@@ -271,6 +271,8 @@ impl DataLog {
         }
         this.fs_file.as_mut().unwrap().flush()?;
 
+        cfg_tracing! { tracing::info!("Created datalog: {}", this.file_name ); };
+
         Ok(this)
     }
 
@@ -297,6 +299,8 @@ impl DataLog {
                 .open(&this.file_name);
         if file.is_err() {
             return Err(Error::Io(file.err().unwrap()));
+        } else {
+            cfg_tracing! { tracing::info!("Opened datalog: {}", this.file_name ); };
         }
         this.fs_file = Some(file.unwrap());
 
@@ -325,7 +329,6 @@ impl DataLog {
         index += 4;
         //parse next metadata_len bytes as metadata
         self.header_metadata = String::from_utf8(bytes[index..index + metadata_len as usize].to_vec()).unwrap();
-        cfg_tracing! { tracing::info!("Metadata: {}", self.header_metadata); };
         //skip metadata_len bytes
         index += metadata_len as usize;
 
@@ -804,6 +807,7 @@ impl DataLogDaemon {
                 }
             }
         });
+        cfg_tracing! { tracing::info!("Spawned DataLogDaemon"); };
         DataLogDaemon {
             thread_handle: Some(thread_handle),
             sender,
@@ -827,6 +831,7 @@ impl DataLogDaemon {
     }
 
     pub fn kill(&mut self) {
+        cfg_tracing! { tracing::info!("Killed DataLogDaemon"); };
         drop(self.thread_handle.take());
     }
 }
