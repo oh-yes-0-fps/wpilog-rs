@@ -472,6 +472,7 @@ impl DataLog {
 
 impl Drop for DataLog {
     fn drop(&mut self) {
+        self.finish_unfinished();
         self.flush().ok();
     }
 }
@@ -562,6 +563,14 @@ impl DataLog {
             entry.unflushed_timestamps.clear();
         }
     }
+
+    fn finish_unfinished(&mut self) {
+        for entry in self.entries.values_mut() {
+            if entry.get_lifespan().1.is_none() {
+                entry.kill(now());
+            }
+        }
+    } 
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
