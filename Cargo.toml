@@ -20,7 +20,7 @@ tracing = ["dep:tracing"]
 #enable tracing feature for tests
 [dev-dependencies]
 tracing-subscriber = "0.3.17"
-wpilog-rs = { path = ".", features = ["tracing"] }
+wpilog = { path = ".", features = ["tracing"] }
 
 
 [profile.release]
