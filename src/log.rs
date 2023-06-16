@@ -722,7 +722,7 @@ impl DataLog {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataLogDaemonSender {
     closed: bool,
     sender: Sender<(EntryName, Record)>,
@@ -772,7 +772,8 @@ impl DataLogDaemonSender {
 #[derive(Debug)]
 pub struct DataLogDaemon {
     thread_handle: Option<JoinHandle<()>>,
-    sender: Sender<(EntryName, Record)>,
+    // sender: Sender<(EntryName, Record)>,
+    sender: DataLogDaemonSender,
     receiver: SingleReceiver<Vec<DatalogEntryResponse>>
 }
 impl DataLogDaemon {
@@ -810,16 +811,20 @@ impl DataLogDaemon {
         cfg_tracing! { tracing::info!("Spawned DataLogDaemon"); };
         DataLogDaemon {
             thread_handle: Some(thread_handle),
-            sender,
+            sender: DataLogDaemonSender {
+                closed: false,
+                sender,
+            },
             receiver: updatee,
         }
     }
 
     pub fn get_sender(&self) -> DataLogDaemonSender {
-        DataLogDaemonSender {
-            closed: false,
-            sender: self.sender.clone(),
-        }
+        self.sender.clone()
+    }
+
+    pub fn borrow_sender(&self) -> &DataLogDaemonSender {
+        &self.sender
     }
 
     pub fn get_all_entries(&mut self) -> &Vec<DatalogEntryResponse> {
