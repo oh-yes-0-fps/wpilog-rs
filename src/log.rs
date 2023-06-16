@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    error::{log_result, WpilogError},
+    error::{log_result, DatalogError},
     now,
     records::{parse_records, ControlRecord, Record},
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp,
@@ -232,14 +232,14 @@ pub struct DataLog {
 
 impl DataLog {
     ///A way to delete a datalog file without worrying if it actually is a datalog file
-    pub fn delete(file_name: PathBuf) -> Result<(), WpilogError> {
+    pub fn delete(file_name: PathBuf) -> Result<(), DatalogError> {
         // does the file exist?
         if !file_name.exists() {
-            return Err(WpilogError::FileDoesNotExist);
+            return Err(DatalogError::FileDoesNotExist);
         } else {
             // does file end with .wpilog?
             if file_name.extension().unwrap() != "wpilog" {
-                return Err(WpilogError::InvalidDataLog);
+                return Err(DatalogError::InvalidDataLog);
             } else {
                 // delete the file
                 fs::remove_file(file_name)?;
@@ -249,9 +249,9 @@ impl DataLog {
     }
 
     /// Creates a new DataLog file
-    pub fn create(config: CreateDataLogConfig) -> Result<Self, WpilogError> {
+    pub fn create(config: CreateDataLogConfig) -> Result<Self, DatalogError> {
         if config.file_path.exists() {
-            return Err(WpilogError::FileAlreadyExists);
+            return Err(DatalogError::FileAlreadyExists);
         }
         let mut this = Self {
             file_name: config.file_path.to_str().unwrap().to_string(),
@@ -269,7 +269,7 @@ impl DataLog {
             .append(true)
             .open(&this.file_name);
         if file.is_err() {
-            return Err(WpilogError::Io(file.err().unwrap()));
+            return Err(DatalogError::Io(file.err().unwrap()));
         }
         this.fs_file = Some(file.unwrap());
 
@@ -287,7 +287,7 @@ impl DataLog {
         header.extend_from_slice(this.header_metadata.as_bytes());
         //write header to file
         if let Err(err) = this.fs_file.as_mut().unwrap().write_all(&header) {
-            return Err(WpilogError::Io(err));
+            return Err(DatalogError::Io(err));
         }
         this.fs_file.as_mut().unwrap().flush()?;
 
@@ -297,9 +297,9 @@ impl DataLog {
     }
 
     /// Opens an existing DataLog file
-    pub fn open(config: OpenDataLogConfig) -> Result<Self, WpilogError> {
+    pub fn open(config: OpenDataLogConfig) -> Result<Self, DatalogError> {
         if !config.file_path.exists() {
-            return Err(WpilogError::FileDoesNotExist);
+            return Err(DatalogError::FileDoesNotExist);
         }
         let mut this = Self {
             file_name: config.file_path.to_str().unwrap().to_string(),
@@ -317,7 +317,7 @@ impl DataLog {
             .append(this.io_type == IOType::ReadWrite)
             .open(&this.file_name);
         if file.is_err() {
-            return Err(WpilogError::Io(file.err().unwrap()));
+            return Err(DatalogError::Io(file.err().unwrap()));
         } else {
             cfg_tracing! { tracing::info!("Opened datalog: {}", this.file_name ); };
         }
@@ -361,14 +361,14 @@ impl DataLog {
         cfg_tracing! { tracing::info!("Populated log {}", self.file_name); };
     }
 
-    fn add_record(&mut self, record: Record) -> Result<(), WpilogError> {
+    fn add_record(&mut self, record: Record) -> Result<(), DatalogError> {
         let entry_exists = self.entries.contains_key(&record.get_id());
         if record.is_control() {
             let control_rec = record.as_control().unwrap();
             if control_rec.is_start() {
                 if entry_exists {
                     cfg_tracing! { tracing::warn!("Received start for existing entry"); };
-                    Err(WpilogError::EntryAlreadyExists)
+                    Err(DatalogError::EntryAlreadyExists)
                 } else {
                     let entry_name = control_rec.get_entry_name().unwrap().clone();
                     let entry_type = control_rec.get_entry_type().unwrap().clone();
@@ -394,7 +394,7 @@ impl DataLog {
                     Ok(())
                 } else {
                     cfg_tracing! { tracing::warn!("Received metadata for non-existent entry"); };
-                    Err(WpilogError::NoSuchEntry)
+                    Err(DatalogError::NoSuchEntry)
                 }
             } else {
                 if entry_exists {
@@ -405,7 +405,7 @@ impl DataLog {
                     Ok(())
                 } else {
                     cfg_tracing! { tracing::warn!("Received finish for non-existent entry"); };
-                    Err(WpilogError::NoSuchEntry)
+                    Err(DatalogError::NoSuchEntry)
                 }
             }
         } else if entry_exists {
@@ -416,7 +416,7 @@ impl DataLog {
             //type check
             if !data_rec.matches_type(&entry.type_str) {
                 cfg_tracing! { tracing::warn!("Received data for entry with wrong type"); };
-                return Err(WpilogError::RecordType(
+                return Err(DatalogError::RecordType(
                     entry.type_str.clone() + &data_rec.get_data_type(),
                 ));
             }
@@ -424,7 +424,7 @@ impl DataLog {
             //is finsihsed check
             if entry.is_finsihed() {
                 cfg_tracing! { tracing::warn!("Received data for finished entry"); };
-                return Err(WpilogError::NoSuchEntry);
+                return Err(DatalogError::NoSuchEntry);
             }
 
             //chronological check
@@ -435,24 +435,24 @@ impl DataLog {
             } else if timestamp < entry.get_lifespan().0 {
                 //timestamp is before the entry was started
                 cfg_tracing!(tracing::warn!("Received data thats too befor an entry was started"););
-                return Err(WpilogError::RetroEntryData);
+                return Err(DatalogError::RetroEntryData);
             } else if timestamp < entry.latest_timestamp {
                 //timestamp is before the latest timestamp but after the entry was started
                 cfg_tracing! { tracing::warn!("Received retro data in append mode"); };
-                return Err(WpilogError::RetroEntryData);
+                return Err(DatalogError::RetroEntryData);
             }
             cfg_tracing! { tracing::debug!("Received data for entry {:?}", entry.name); };
             Ok(())
         } else {
             cfg_tracing! { tracing::warn!("Received data for non-existent entry"); };
-            Err(WpilogError::NoSuchEntry)
+            Err(DatalogError::NoSuchEntry)
         }
     }
 
-    pub fn flush(&mut self) -> Result<(), WpilogError> {
+    pub fn flush(&mut self) -> Result<(), DatalogError> {
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
-            return Err(WpilogError::DataLogReadOnly);
+            return Err(DatalogError::DataLogReadOnly);
         }
         let mut buf = Vec::new();
         for entry in self.entries.values_mut() {
@@ -482,7 +482,7 @@ impl DataLog {
         &mut self,
         entry_name: String,
         value: DataLogValue,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         self.append_to_entry_timestamp(entry_name, value, now())
     }
 
@@ -491,15 +491,15 @@ impl DataLog {
         entry_name: String,
         value: DataLogValue,
         timestamp: WpiTimestamp,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
-            return Err(WpilogError::DataLogReadOnly);
+            return Err(DatalogError::DataLogReadOnly);
         }
         let entry_id = self.id_to_name_map.get_by_right(&entry_name);
         if entry_id.is_none() {
             cfg_tracing! { tracing::warn!("Attempted to append to non-existent entry"); };
-            return Err(WpilogError::NoSuchEntry);
+            return Err(DatalogError::NoSuchEntry);
         }
         let record = Record::Data(value.into(), timestamp, *entry_id.unwrap());
         self.add_record(record)
@@ -510,7 +510,7 @@ impl DataLog {
         entry_name: String,
         entry_type: String,
         metadata: String,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         self.create_entry_timestamp(entry_name, entry_type, metadata, now())
     }
 
@@ -520,15 +520,15 @@ impl DataLog {
         entry_type: String,
         metadata: String,
         timestamp: WpiTimestamp,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
-            return Err(WpilogError::DataLogReadOnly);
+            return Err(DatalogError::DataLogReadOnly);
         }
         let entry_id = self.id_to_name_map.get_by_right(&entry_name);
         if entry_id.is_some() {
             cfg_tracing! { tracing::warn!("Attempted to create existing entry"); };
-            return Err(WpilogError::EntryAlreadyExists);
+            return Err(DatalogError::EntryAlreadyExists);
         }
         let next_id = if !self.entries.is_empty() {
             *self.entries.keys().max().unwrap() + 1
@@ -543,15 +543,15 @@ impl DataLog {
         self.add_record(record)
     }
 
-    pub fn kill_entry(&mut self, entry_name: String) -> Result<(), WpilogError> {
+    pub fn kill_entry(&mut self, entry_name: String) -> Result<(), DatalogError> {
         if self.io_type == IOType::ReadOnly {
             cfg_tracing! { tracing::warn!("Attempted to write to read only log"); };
-            return Err(WpilogError::DataLogReadOnly);
+            return Err(DatalogError::DataLogReadOnly);
         }
         let entry_id = self.id_to_name_map.get_by_right(&entry_name);
         if entry_id.is_none() {
             cfg_tracing! { tracing::warn!("Attempted to finish non-existent entry"); };
-            return Err(WpilogError::NoSuchEntry);
+            return Err(DatalogError::NoSuchEntry);
         }
         let record = Record::Control(ControlRecord::Finish, now(), *entry_id.unwrap());
         self.add_record(record)
@@ -688,35 +688,35 @@ impl DataLog {
         &self,
         entry_name: EntryName,
         when: WpiTimestamp,
-    ) -> Result<DataLogResponse, WpilogError> {
+    ) -> Result<DataLogResponse, DatalogError> {
         if let Some(entry) = self.get_entry_from_name(&entry_name) {
             //is timestamp within the entry's lifetime?
             let lifespan = entry.get_lifespan();
             if when < lifespan.0 {
-                Err(WpilogError::OutsideEntryLifetime)
+                Err(DatalogError::OutsideEntryLifetime)
             } else if let Some(end_time) = lifespan.1 {
                 if when > end_time {
-                    Err(WpilogError::OutsideEntryLifetime)
+                    Err(DatalogError::OutsideEntryLifetime)
                 } else {
                     DataLog::get_value_just_before_timestamp(entry, when)
-                        .ok_or(WpilogError::OutsideEntryLifetime)
+                        .ok_or(DatalogError::OutsideEntryLifetime)
                 }
             } else {
                 DataLog::get_value_just_before_timestamp(entry, when)
-                    .ok_or(WpilogError::OutsideEntryLifetime)
+                    .ok_or(DatalogError::OutsideEntryLifetime)
             }
         } else {
-            Err(WpilogError::NoSuchEntry)
+            Err(DatalogError::NoSuchEntry)
         }
     }
 
     pub fn get_last_entry_value(
         &self,
         entry_name: EntryName,
-    ) -> Result<DataLogResponse, WpilogError> {
+    ) -> Result<DataLogResponse, DatalogError> {
         if let Some(entry) = self.get_entry_from_name(&entry_name) {
             if entry.marks.keys().len() == 0 {
-                Err(WpilogError::OutsideEntryLifetime)
+                Err(DatalogError::OutsideEntryLifetime)
             } else {
                 let key = entry.marks.keys().max().unwrap();
                 Ok(DataLogResponse {
@@ -726,7 +726,7 @@ impl DataLog {
                 })
             }
         } else {
-            Err(WpilogError::NoSuchEntry)
+            Err(DatalogError::NoSuchEntry)
         }
     }
 
@@ -788,9 +788,9 @@ impl DataLogDaemonSender {
         name: EntryName,
         entry_type: EntryType,
         metadata: Option<String>,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         if self.closed {
-            return Err(WpilogError::DataLogDaemonClosed);
+            return Err(DatalogError::DataLogDaemonClosed);
         }
         self.sender.send((
             String::new(),
@@ -803,9 +803,13 @@ impl DataLogDaemonSender {
         Ok(())
     }
 
-    pub fn append_to_entry(&self, name: EntryName, value: DataLogValue) -> Result<(), WpilogError> {
+    pub fn append_to_entry(
+        &self,
+        name: EntryName,
+        value: DataLogValue,
+    ) -> Result<(), DatalogError> {
         if self.closed {
-            return Err(WpilogError::DataLogDaemonClosed);
+            return Err(DatalogError::DataLogDaemonClosed);
         }
         self.sender
             .send((name, Record::Data(value.into(), now(), 0)))?;
@@ -817,18 +821,18 @@ impl DataLogDaemonSender {
         name: EntryName,
         value: DataLogValue,
         timestamp: WpiTimestamp,
-    ) -> Result<(), WpilogError> {
+    ) -> Result<(), DatalogError> {
         if self.closed {
-            return Err(WpilogError::DataLogDaemonClosed);
+            return Err(DatalogError::DataLogDaemonClosed);
         }
         self.sender
             .send((name, Record::Data(value.into(), timestamp, 0)))?;
         Ok(())
     }
 
-    pub fn finish_entry(&self, name: EntryName) -> Result<(), WpilogError> {
+    pub fn finish_entry(&self, name: EntryName) -> Result<(), DatalogError> {
         if self.closed {
-            return Err(WpilogError::DataLogDaemonClosed);
+            return Err(DatalogError::DataLogDaemonClosed);
         }
         self.sender
             .send((name, Record::Control(ControlRecord::Finish, now(), 0)))?;

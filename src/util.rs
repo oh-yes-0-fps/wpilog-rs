@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::WpilogError;
+use crate::error::DatalogError;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UInts {
@@ -285,9 +285,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn u32(&mut self) -> Result<u32, WpilogError> {
+    pub fn u32(&mut self) -> Result<u32, DatalogError> {
         if self.bytes_left() < 4 {
-            return Err(WpilogError::RecordReaderOutOfBounds("u32"));
+            return Err(DatalogError::RecordReaderOutOfBounds("u32"));
         }
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 4]);
@@ -296,9 +296,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn u64(&mut self) -> Result<u64, WpilogError> {
+    pub fn u64(&mut self) -> Result<u64, DatalogError> {
         if self.bytes_left() < 8 {
-            return Err(WpilogError::RecordReaderOutOfBounds("u64"));
+            return Err(DatalogError::RecordReaderOutOfBounds("u64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -307,9 +307,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn i64(&mut self) -> Result<i64, WpilogError> {
+    pub fn i64(&mut self) -> Result<i64, DatalogError> {
         if self.bytes_left() < 8 {
-            return Err(WpilogError::RecordReaderOutOfBounds("i64"));
+            return Err(DatalogError::RecordReaderOutOfBounds("i64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -318,9 +318,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn bool(&mut self) -> Result<bool, WpilogError> {
+    pub fn bool(&mut self) -> Result<bool, DatalogError> {
         if self.bytes_left() < 1 {
-            return Err(WpilogError::RecordReaderOutOfBounds("bool"));
+            return Err(DatalogError::RecordReaderOutOfBounds("bool"));
         }
         let mut bytes = [0u8; 1];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 1]);
@@ -329,9 +329,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn u8(&mut self) -> Result<u8, WpilogError> {
+    pub fn u8(&mut self) -> Result<u8, DatalogError> {
         if self.bytes_left() < 1 {
-            return Err(WpilogError::RecordReaderOutOfBounds("u8"));
+            return Err(DatalogError::RecordReaderOutOfBounds("u8"));
         }
         let mut bytes = [0u8; 1];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 1]);
@@ -340,9 +340,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn u16(&mut self) -> Result<u16, WpilogError> {
+    pub fn u16(&mut self) -> Result<u16, DatalogError> {
         if self.bytes_left() < 2 {
-            return Err(WpilogError::RecordReaderOutOfBounds("u16"));
+            return Err(DatalogError::RecordReaderOutOfBounds("u16"));
         }
         let mut bytes = [0u8; 2];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 2]);
@@ -351,9 +351,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn string(&mut self, len: usize) -> Result<String, WpilogError> {
+    pub fn string(&mut self, len: usize) -> Result<String, DatalogError> {
         if self.bytes_left() < len {
-            return Err(WpilogError::RecordReaderOutOfBounds("string"));
+            return Err(DatalogError::RecordReaderOutOfBounds("string"));
         }
         let mut bytes = vec![0u8; len];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + len]);
@@ -362,9 +362,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn f32(&mut self) -> Result<f32, WpilogError> {
+    pub fn f32(&mut self) -> Result<f32, DatalogError> {
         if self.bytes_left() < 4 {
-            return Err(WpilogError::RecordReaderOutOfBounds("f32"));
+            return Err(DatalogError::RecordReaderOutOfBounds("f32"));
         }
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 4]);
@@ -373,9 +373,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn f64(&mut self) -> Result<f64, WpilogError> {
+    pub fn f64(&mut self) -> Result<f64, DatalogError> {
         if self.bytes_left() < 8 {
-            return Err(WpilogError::RecordReaderOutOfBounds("f64"));
+            return Err(DatalogError::RecordReaderOutOfBounds("f64"));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + 8]);
@@ -384,9 +384,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn bytes(&mut self, len: usize) -> Result<Vec<u8>, WpilogError> {
+    pub fn bytes(&mut self, len: usize) -> Result<Vec<u8>, DatalogError> {
         if self.bytes_left() < len {
-            return Err(WpilogError::RecordReaderOutOfBounds("bytes"));
+            return Err(DatalogError::RecordReaderOutOfBounds("bytes"));
         }
         let mut bytes = vec![0u8; len];
         bytes.copy_from_slice(&self.bytes[self.index..self.index + len]);
@@ -395,9 +395,9 @@ impl RecordByteReader {
     }
 
     #[inline]
-    pub fn skip(&mut self, len: usize) -> Result<(), WpilogError> {
+    pub fn skip(&mut self, len: usize) -> Result<(), DatalogError> {
         if self.bytes_left() < len {
-            return Err(WpilogError::RecordReaderOutOfBounds("skip"));
+            return Err(DatalogError::RecordReaderOutOfBounds("skip"));
         }
         self.index += len;
         Ok(())

@@ -3,13 +3,15 @@ use std::path::{Path, PathBuf};
 #[macro_use]
 pub mod macros;
 
+pub mod error;
 pub mod log;
 pub(crate) mod records;
 pub(crate) mod util;
-pub mod error;
 
 #[cfg(test)]
 mod test;
+
+pub use error::DatalogError;
 
 ///Microseconds
 type WpiTimestamp = u64;
@@ -28,7 +30,7 @@ type LeByte = u8;
 ///A hash map of entry id to entry types
 type EntryTypeMap = std::collections::HashMap<EntryId, EntryType>;
 ///A hash map of entry id to entry names
-type EntryIdToNameMap = bimap::BiMap::<EntryId, EntryName>;
+type EntryIdToNameMap = bimap::BiMap<EntryId, EntryName>;
 
 pub fn sec_from_micros(micros: WpiTimestamp) -> f64 {
     micros as f64 / 1_000_000.0

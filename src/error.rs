@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum WpilogError {
+pub enum DatalogError {
     #[error("DataLog io error: {0:?}")]
     Io(#[from] std::io::Error),
     #[error("Record serialization error: {0:?}")]

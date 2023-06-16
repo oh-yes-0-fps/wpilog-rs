@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::{
-    error::{log_result, WpilogError},
+    error::{log_result, DatalogError},
     log::DataLogValue,
     util::{RecordByteReader, UInts},
     EntryId, EntryMetadata, EntryName, EntryType, EntryTypeMap, LeByte, LeBytes, WpiTimestamp,
@@ -180,7 +180,7 @@ impl Record {
         }
     }
 
-    pub fn from_binary(bytes: LeBytes, type_map: &EntryTypeMap) -> Result<Self, WpilogError> {
+    pub fn from_binary(bytes: LeBytes, type_map: &EntryTypeMap) -> Result<Self, DatalogError> {
         let mut reader = RecordByteReader::new(bytes);
         let bit_field = reader.u8().unwrap();
 
@@ -192,7 +192,7 @@ impl Record {
         if let Ok(bin_int) = reader.bytes(id_length as usize) {
             id = UInts::from_binary(bin_int);
         } else {
-            return Err(WpilogError::RecordReaderOutOfBounds("Entry id"));
+            return Err(DatalogError::RecordReaderOutOfBounds("Entry id"));
         }
 
         if let Err(err) = reader.skip(payload_length as usize) {
@@ -203,7 +203,7 @@ impl Record {
         if let Ok(bin_int) = reader.bytes(timestamp_length as usize) {
             timestamp = UInts::from_binary(bin_int);
         } else {
-            return Err(WpilogError::RecordReaderOutOfBounds("Timestamp"));
+            return Err(DatalogError::RecordReaderOutOfBounds("Timestamp"));
         }
 
         let type_str = type_map
@@ -214,7 +214,7 @@ impl Record {
         let is_control = u32::from(id) == 0u32;
 
         if !SUPPORTED_TYPES.contains(&type_str.as_str()) && !is_control {
-            return Err(WpilogError::RecordType(
+            return Err(DatalogError::RecordType(
                 "Unsupported type: ".to_string() + &type_str,
             ));
         }
@@ -230,7 +230,7 @@ impl Record {
                 ))
             } else {
                 cfg_tracing! { tracing::warn!("Unsupported control record"); };
-                Err(WpilogError::RecordDeserialize(
+                Err(DatalogError::RecordDeserialize(
                     "Unsupported control record".to_string(),
                 ))
             }
@@ -240,7 +240,7 @@ impl Record {
                 Ok(Record::Data(data_record, timestamp.into(), id.into()))
             } else {
                 cfg_tracing! { tracing::warn!("Unsupported data record"); };
-                Err(WpilogError::RecordDeserialize(
+                Err(DatalogError::RecordDeserialize(
                     "Unsupported data record".to_string(),
                 ))
             }
@@ -349,7 +349,7 @@ impl ControlRecord {
         }
     }
 
-    pub fn from_binary(bytes: LeBytes) -> Result<(Self, EntryId), WpilogError> {
+    pub fn from_binary(bytes: LeBytes) -> Result<(Self, EntryId), DatalogError> {
         let mut reader = RecordByteReader::new(bytes);
         let control_type = reader.u8().unwrap();
         let entry_id = reader.u32().unwrap();
@@ -358,7 +358,7 @@ impl ControlRecord {
                 if let Ok(name_len) = reader.u32() {
                     //checks name bytes
                     if reader.bytes_left() < name_len as usize {
-                        return Err(WpilogError::RecordReaderOutOfBounds(
+                        return Err(DatalogError::RecordReaderOutOfBounds(
                             "Start control record name",
                         ));
                     }
@@ -366,7 +366,7 @@ impl ControlRecord {
                     if let Ok(type_len) = reader.u32() {
                         //checks type bytes
                         if reader.bytes_left() < type_len as usize {
-                            return Err(WpilogError::RecordReaderOutOfBounds(
+                            return Err(DatalogError::RecordReaderOutOfBounds(
                                 "Start control record type",
                             ));
                         }
@@ -374,7 +374,7 @@ impl ControlRecord {
                         if let Ok(metadata_len) = reader.u32() {
                             //checks metadata bytes
                             if reader.bytes_left() < metadata_len as usize {
-                                return Err(WpilogError::RecordReaderOutOfBounds(
+                                return Err(DatalogError::RecordReaderOutOfBounds(
                                     "Start control record metadata",
                                 ));
                             }
@@ -387,13 +387,15 @@ impl ControlRecord {
                     }
                 }
                 //one of the checks above failed
-                Err(WpilogError::RecordReaderOutOfBounds("Start control record"))
+                Err(DatalogError::RecordReaderOutOfBounds(
+                    "Start control record",
+                ))
             }
             1 => Ok((ControlRecord::Finish, entry_id)),
             2 => {
                 if let Ok(metadata_len) = reader.u32() {
                     if reader.bytes_left() != metadata_len as usize {
-                        return Err(WpilogError::RecordReaderOutOfBounds(
+                        return Err(DatalogError::RecordReaderOutOfBounds(
                             "Metadata control record string",
                         ));
                     }
@@ -402,7 +404,7 @@ impl ControlRecord {
                         entry_id,
                     ))
                 } else {
-                    Err(WpilogError::RecordReaderOutOfBounds(
+                    Err(DatalogError::RecordReaderOutOfBounds(
                         "Metadata control record length",
                     ))
                 }
@@ -474,9 +476,9 @@ impl DataRecord {
         bytes
     }
 
-    pub fn from_binary(bytes: LeBytes, type_str: String) -> Result<Self, WpilogError> {
+    pub fn from_binary(bytes: LeBytes, type_str: String) -> Result<Self, DatalogError> {
         if bytes.len() < 1 {
-            return Err(WpilogError::RecordReaderOutOfBounds("Bytes len is 0"));
+            return Err(DatalogError::RecordReaderOutOfBounds("Bytes len is 0"));
         }
         Self::from_binary_inner(bytes, type_str)
     }
@@ -553,7 +555,7 @@ impl DataRecord {
         }
     }
 
-    fn from_binary_inner(bytes: LeBytes, type_str: String) -> Result<Self, WpilogError> {
+    fn from_binary_inner(bytes: LeBytes, type_str: String) -> Result<Self, DatalogError> {
         let mut reader = RecordByteReader::new(bytes);
         match type_str.as_str() {
             "raw" => Ok(DataRecord::Raw(reader.the_rest())),
@@ -565,28 +567,28 @@ impl DataRecord {
                 if let Ok(i) = reader.i64() {
                     Ok(DataRecord::Integer(i))
                 } else {
-                    Err(WpilogError::RecordReaderOutOfBounds("Int64"))
+                    Err(DatalogError::RecordReaderOutOfBounds("Int64"))
                 }
             }
             "float" => {
                 if let Ok(f) = reader.f32() {
                     Ok(DataRecord::Float(f))
                 } else {
-                    Err(WpilogError::RecordReaderOutOfBounds("Float"))
+                    Err(DatalogError::RecordReaderOutOfBounds("Float"))
                 }
             }
             "double" => {
                 if let Ok(d) = reader.f64() {
                     Ok(DataRecord::Double(d))
                 } else {
-                    Err(WpilogError::RecordReaderOutOfBounds("Double"))
+                    Err(DatalogError::RecordReaderOutOfBounds("Double"))
                 }
             }
             "string" => {
                 if let Ok(s) = reader.string(reader.bytes_left()) {
                     Ok(DataRecord::String(s))
                 } else {
-                    Err(WpilogError::RecordReaderOutOfBounds("String"))
+                    Err(DatalogError::RecordReaderOutOfBounds("String"))
                 }
             }
             "boolean[]" => {
@@ -622,13 +624,13 @@ impl DataRecord {
                 while reader.bytes_left() >= 4 {
                     let len = reader.u32().unwrap();
                     if reader.bytes_left() < len as usize {
-                        return Err(WpilogError::RecordReaderOutOfBounds("String[]"));
+                        return Err(DatalogError::RecordReaderOutOfBounds("String[]"));
                     }
                     strings.push(reader.string(len as usize).unwrap());
                 }
                 Ok(DataRecord::StringArray(strings))
             }
-            _ => Err(WpilogError::RecordType(type_str)),
+            _ => Err(DatalogError::RecordType(type_str)),
         }
     }
 }
