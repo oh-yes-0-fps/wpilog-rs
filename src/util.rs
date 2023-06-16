@@ -93,10 +93,30 @@ impl UInts {
                 bytes.copy_from_slice(&le_bytes);
                 u16::from_le_bytes(bytes)
             }),
+            3 => UInts::U32({
+                let mut bytes = [0; 4];
+                bytes[1..].copy_from_slice(&le_bytes);
+                u32::from_le_bytes(bytes)
+            }),
             4 => UInts::U32({
                 let mut bytes = [0; 4];
                 bytes.copy_from_slice(&le_bytes);
                 u32::from_le_bytes(bytes)
+            }),
+            5 => UInts::U64({
+                let mut bytes = [0; 8];
+                bytes[3..].copy_from_slice(&le_bytes);
+                u64::from_le_bytes(bytes)
+            }),
+            6 => UInts::U64({
+                let mut bytes = [0; 8];
+                bytes[2..].copy_from_slice(&le_bytes);
+                u64::from_le_bytes(bytes)
+            }),
+            7 => UInts::U64({
+                let mut bytes = [0; 8];
+                bytes[1..].copy_from_slice(&le_bytes);
+                u64::from_le_bytes(bytes)
             }),
             8 => UInts::U64({
                 let mut bytes = [0; 8];
@@ -108,7 +128,7 @@ impl UInts {
                 bytes.copy_from_slice(&le_bytes);
                 u128::from_le_bytes(bytes)
             }),
-            _ => panic!("Invalid byte length"),
+            _ => panic!("Invalid byte length {}", le_bytes.len()),
         }
     }
 }

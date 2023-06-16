@@ -1,4 +1,4 @@
-use std::{path::PathBuf, collections::HashMap};
+use std::{path::PathBuf, collections::HashMap, fs::File};
 
 use crate::{log::{CreateDataLogConfig, DataLog, OpenDataLogConfig, IOType, DataLogValue}, util::UInts, records::{Record, DataRecord}, now};
 
@@ -82,7 +82,6 @@ fn basic_le_byte_read() {
 #[test]
 fn test_read_and_save() {
 
-
     tracing_subscriber::fmt::init();
 
     let file_path = PathBuf::from("data_log.wpilog");
@@ -124,4 +123,20 @@ fn test_read_and_save() {
     assert_eq!(last_val.value, DataLogValue::Double(30.0));
 
     DataLog::delete(file_path).unwrap();
+}
+
+#[test]
+fn test_read() {
+    let config = OpenDataLogConfig {
+        file_path: "./test_logs/test.wpilog".into(),
+        io_type: IOType::ReadOnly,
+    };
+
+    write_datalog_json(DataLog::open(config).unwrap());
+}
+
+fn write_datalog_json(log: DataLog) {
+    let mut file = File::create("./test_logs/test.json").unwrap();
+    let json = serde_json::to_string_pretty(&log.get_all_entries()).unwrap();
+    std::io::Write::write_all(&mut file, json.as_bytes()).unwrap();
 }

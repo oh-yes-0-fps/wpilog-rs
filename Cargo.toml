@@ -21,7 +21,7 @@ tracing = ["dep:tracing"]
 [dev-dependencies]
 tracing-subscriber = "0.3.17"
 wpilog = { path = ".", features = ["tracing"] }
-
+serde_json = "1"
 
 [profile.release]
 lto = true
