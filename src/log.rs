@@ -449,6 +449,12 @@ impl DataLog {
     }
 }
 
+impl Drop for DataLog {
+    fn drop(&mut self) {
+        self.flush().ok();
+    }
+}
+
 //write stuff
 impl DataLog {
     pub fn append_to_entry(&mut self, entry_name: String, value: DataLogValue) -> Result<(), Error>{
@@ -728,43 +734,43 @@ pub struct DataLogDaemonSender {
     sender: Sender<(EntryName, Record)>,
 }
 impl DataLogDaemonSender {
-    pub fn start_entry(&self, name: EntryName, entry_type: EntryType, metadata: Option<String>) -> Result<(), ()> {
+    pub fn start_entry(&self, name: EntryName, entry_type: EntryType, metadata: Option<String>) -> Result<(), Error> {
         if self.closed {
-            return Err(());
+            return Err(Error::DataLogDaemonClosed);
         }
         self.sender.send((String::new(), Record::Control(
             ControlRecord::Start(name, entry_type, metadata.unwrap_or_default()),
             now(),
             0
-        ))).unwrap();
+        )))?;
         Ok(())
     }
 
-    pub fn append_to_entry(&self, name: EntryName, value: DataLogValue) -> Result<(), ()> {
+    pub fn append_to_entry(&self, name: EntryName, value: DataLogValue) -> Result<(), Error> {
         if self.closed {
-            return Err(());
+            return Err(Error::DataLogDaemonClosed);
         }
-        self.sender.send((name, Record::Data(value.into(), now(), 0))).unwrap();
+        self.sender.send((name, Record::Data(value.into(), now(), 0)))?;
         Ok(())
     }
 
-    pub fn append_to_entry_with_timestamp(&self, name: EntryName, value: DataLogValue, timestamp: WpiTimestamp) -> Result<(), ()> {
+    pub fn append_to_entry_with_timestamp(&self, name: EntryName, value: DataLogValue, timestamp: WpiTimestamp) -> Result<(), Error> {
         if self.closed {
-            return Err(());
+            return Err(Error::DataLogDaemonClosed);
         }
-        self.sender.send((name, Record::Data(value.into(), timestamp, 0))).unwrap();
+        self.sender.send((name, Record::Data(value.into(), timestamp, 0)))?;
         Ok(())
     }
 
-    pub fn finish_entry(&self, name: EntryName) -> Result<(), ()> {
+    pub fn finish_entry(&self, name: EntryName) -> Result<(), Error> {
         if self.closed {
-            return Err(());
+            return Err(Error::DataLogDaemonClosed);
         }
         self.sender.send((name, Record::Control(
             ControlRecord::Finish,
             now(),
             0
-        ))).unwrap();
+        )))?;
         Ok(())
     }
 }
@@ -838,5 +844,11 @@ impl DataLogDaemon {
     pub fn kill(&mut self) {
         cfg_tracing! { tracing::info!("Killed DataLogDaemon"); };
         drop(self.thread_handle.take());
+    }
+}
+
+impl Drop for DataLogDaemon {
+    fn drop(&mut self) {
+        self.kill();
     }
 }

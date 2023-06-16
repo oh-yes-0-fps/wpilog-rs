@@ -28,6 +28,10 @@ pub enum Error {
     FileAlreadyExists,
     #[error("Retro entry data")]
     RetroEntryData,
+    #[error("DataLogDaemon unreachable: {0:?}")]
+    DataLogDaemonUnreachable(#[from] std::sync::mpsc::SendError<(std::string::String, crate::records::Record)>),
+    #[error("DataLogDaemon closed")]
+    DataLogDaemonClosed,
 }
 
 #[inline(always)]
