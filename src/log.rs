@@ -865,7 +865,6 @@ impl DataLogDaemon {
             let mut cycle_count = 0;
             loop {
                 if let Ok(data) = receiver.try_recv() {
-                    cfg_tracing! {tracing::info!("Updated datalog");}
                     if data.0.len() == 0 {
                         log.add_record(data.1).ok();
                     } else {
@@ -886,6 +885,7 @@ impl DataLogDaemon {
                         log.flush().ok();
                         cycle_count = 0;
                     }
+                    cycle_count += 1;
                 }
             }
         });
