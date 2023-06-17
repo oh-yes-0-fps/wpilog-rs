@@ -228,6 +228,7 @@ pub struct DataLog {
     id_to_name_map: EntryIdToNameMap,
     entries: HashMap<EntryId, Entry>,
     finished_entries: HashSet<EntryId>,
+    summary: HashMap<EntryName, EntryType>
 }
 
 impl DataLog {
@@ -262,6 +263,7 @@ impl DataLog {
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
+            summary: HashMap::new()
         };
         let file = OpenOptions::new()
             .read(true)
@@ -310,6 +312,7 @@ impl DataLog {
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
+            summary: HashMap::new()
         };
 
         let file = OpenOptions::new()
@@ -377,6 +380,7 @@ impl DataLog {
                     let timestamp = record.get_timestamp();
 
                     self.id_to_name_map.insert(entry_id, entry_name.clone());
+                    self.summary.insert(entry_name.clone(), entry_type.clone());
 
                     let entry =
                         Entry::new(entry_name, entry_id, entry_type, entry_metadata, timestamp);
@@ -399,6 +403,7 @@ impl DataLog {
             } else {
                 if entry_exists {
                     let entry = self.entries.get_mut(&record.get_id()).unwrap();
+                    self.summary.remove(&entry.name);
                     entry.kill(record.get_timestamp());
                     self.finished_entries.insert(record.get_id());
                     cfg_tracing! { tracing::debug!("Received finish for entry {:?}", entry.name); };
@@ -784,6 +789,10 @@ impl DataLog {
         }
         entries
     }
+
+    pub fn get_summary(&self) -> HashMap<EntryName, EntryType> {
+        self.summary.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -852,14 +861,15 @@ impl DataLogDaemonSender {
 #[derive(Debug)]
 pub struct DataLogDaemon {
     thread_handle: Option<JoinHandle<()>>,
-    // sender: Sender<(EntryName, Record)>,
     sender: DataLogDaemonSender,
     receiver: SingleReceiver<Vec<DatalogEntryResponse>>,
+    summary: SingleReceiver<HashMap<EntryName, EntryType>>
 }
 impl DataLogDaemon {
     fn spawn(datalog: DataLog) -> DataLogDaemon {
         let (sender, receiver) = channel::<(EntryName, Record)>();
         let (updatee, updater) = single_channel::<Vec<DatalogEntryResponse>>(Vec::new());
+        let (summary_updatee, summary_updater) = single_channel::<HashMap<EntryName, EntryType>>(HashMap::new());
         let thread_handle = thread::spawn(move || {
             let mut log = datalog;
             let mut cycle_count = 0;
@@ -879,6 +889,7 @@ impl DataLogDaemon {
                             *id.unwrap(),
                         );
                         log.add_record(new_rec).ok();
+                        summary_updater.update(log.get_summary()).ok();
                     }
                     if cycle_count > 5 {
                         updater.update(log.get_all_entries()).ok();
@@ -897,6 +908,7 @@ impl DataLogDaemon {
                 sender,
             },
             receiver: updatee,
+            summary: summary_updatee
         }
     }
 
@@ -919,6 +931,10 @@ impl DataLogDaemon {
     pub fn kill(&mut self) {
         cfg_tracing! { tracing::info!("Killed DataLogDaemon"); };
         drop(self.thread_handle.take());
+    }
+
+    pub fn summary(&mut self) -> HashMap<EntryName, EntryType> {
+        self.summary.latest().clone()
     }
 }
 
