@@ -132,6 +132,19 @@ impl Entry {
         }
     }
 
+    pub(crate) fn free_old_marks(&mut self, before: WpiTimestamp) {
+        let mut to_remove = Vec::new();
+        for (timestamp, _) in &self.marks {
+            if *timestamp < before {
+                to_remove.push(*timestamp);
+            }
+        }
+        //needs to be 2 separate loops to avoid borrowing issues
+        for timestamp in to_remove {
+            self.marks.remove(&timestamp);
+        }
+    }
+
     #[allow(dead_code)]
     pub(crate) fn get_records(&self) -> Vec<Record> {
         let lifespan = self.get_lifespan();
@@ -471,7 +484,13 @@ impl DataLog {
     }
 
     pub fn as_daemon(self) -> DataLogDaemon {
-        DataLogDaemon::spawn(self)
+        DataLogDaemon::spawn(self, 4.0)
+    }
+
+    pub fn free_old_data(&mut self, before: WpiTimestamp) {
+        for entry in self.entries.values_mut() {
+            entry.free_old_marks(before);
+        }
     }
 }
 
@@ -866,11 +885,16 @@ pub struct DataLogDaemon {
     summary: SingleReceiver<HashMap<EntryName, EntryType>>
 }
 impl DataLogDaemon {
-    fn spawn(datalog: DataLog) -> DataLogDaemon {
+    fn spawn(datalog: DataLog, max_data_age_hrs: f64) -> DataLogDaemon {
         let (sender, receiver) = channel::<(EntryName, Record)>();
         let (updatee, updater) = single_channel::<Vec<DatalogEntryResponse>>(Vec::new());
         let (summary_updatee, summary_updater) = single_channel::<HashMap<EntryName, EntryType>>(HashMap::new());
-        let thread_handle = thread::spawn(move || {
+        let thread_handle = thread::Builder::new()
+            .name("DataLogDaemon".to_owned())
+            .spawn(move || {
+            let max_age = (max_data_age_hrs * 60.0 * 60.0 * 1000.0 * 1000.0) as WpiTimestamp;
+            let thirty_min = 30u64 * 60 * 1000 * 1000;
+            let mut last_free = now();
             let mut log = datalog;
             let mut cycle_count = 0;
             loop {
@@ -898,8 +922,12 @@ impl DataLogDaemon {
                     }
                     cycle_count += 1;
                 }
+                if now() - last_free > max_age + thirty_min{
+                    log.free_old_data(now() - max_age);
+                    last_free = now() - max_age;
+                }
             }
-        });
+        }).unwrap();
         cfg_tracing! { tracing::info!("Spawned DataLogDaemon"); };
         DataLogDaemon {
             thread_handle: Some(thread_handle),
