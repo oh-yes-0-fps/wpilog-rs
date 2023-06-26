@@ -948,8 +948,8 @@ impl DataLogDaemon {
         &self.sender
     }
 
-    pub fn get_all_entries(&mut self) -> &Vec<DatalogEntryResponse> {
-        self.receiver.latest()
+    pub fn get_all_entries(&mut self) -> Vec<DatalogEntryResponse> {
+        self.receiver.latest().clone()
     }
 
     pub fn is_alive(&self) -> bool {
