@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use frcv::FrcValue;
+
 use crate::{
     error::{log_result, DatalogError},
-    log::DataLogValue,
     util::{RecordByteReader, UInts},
     EntryId, EntryMetadata, EntryName, EntryType, EntryTypeMap, LeByte, LeBytes, WpiTimestamp,
 };
@@ -635,38 +636,42 @@ impl DataRecord {
     }
 }
 
-impl From<DataRecord> for DataLogValue {
+impl From<DataRecord> for FrcValue {
     fn from(record: DataRecord) -> Self {
         match record {
-            DataRecord::Raw(data) => DataLogValue::Raw(data),
-            DataRecord::Boolean(data) => DataLogValue::Boolean(data),
-            DataRecord::Integer(data) => DataLogValue::Integer(data),
-            DataRecord::Float(data) => DataLogValue::Float(data),
-            DataRecord::Double(data) => DataLogValue::Double(data),
-            DataRecord::String(data) => DataLogValue::String(data),
-            DataRecord::BooleanArray(data) => DataLogValue::BooleanArray(data),
-            DataRecord::IntegerArray(data) => DataLogValue::IntegerArray(data),
-            DataRecord::FloatArray(data) => DataLogValue::FloatArray(data),
-            DataRecord::DoubleArray(data) => DataLogValue::DoubleArray(data),
-            DataRecord::StringArray(data) => DataLogValue::StringArray(data),
+            DataRecord::Raw(data) => FrcValue::Binary(frcv::FrcBinaryFormats::Raw(data)),
+            DataRecord::Boolean(data) => FrcValue::Bool(data),
+            DataRecord::Integer(data) => FrcValue::Int(data),
+            DataRecord::Float(data) => FrcValue::Float(data),
+            DataRecord::Double(data) => FrcValue::Double(data),
+            DataRecord::String(data) => FrcValue::String(data),
+            DataRecord::BooleanArray(data) => FrcValue::BoolArray(data),
+            DataRecord::IntegerArray(data) => FrcValue::IntArray(data),
+            DataRecord::FloatArray(data) => FrcValue::FloatArray(data),
+            DataRecord::DoubleArray(data) => FrcValue::DoubleArray(data),
+            DataRecord::StringArray(data) => FrcValue::StringArray(data),
         }
     }
 }
 
-impl From<DataLogValue> for DataRecord {
-    fn from(value: DataLogValue) -> Self {
+impl From<FrcValue> for DataRecord {
+    fn from(value: FrcValue) -> Self {
         match value {
-            DataLogValue::Raw(data) => DataRecord::Raw(data),
-            DataLogValue::Boolean(data) => DataRecord::Boolean(data),
-            DataLogValue::Integer(data) => DataRecord::Integer(data),
-            DataLogValue::Float(data) => DataRecord::Float(data),
-            DataLogValue::Double(data) => DataRecord::Double(data),
-            DataLogValue::String(data) => DataRecord::String(data),
-            DataLogValue::BooleanArray(data) => DataRecord::BooleanArray(data),
-            DataLogValue::IntegerArray(data) => DataRecord::IntegerArray(data),
-            DataLogValue::FloatArray(data) => DataRecord::FloatArray(data),
-            DataLogValue::DoubleArray(data) => DataRecord::DoubleArray(data),
-            DataLogValue::StringArray(data) => DataRecord::StringArray(data),
+            FrcValue::Binary(data) => match data {
+                frcv::FrcBinaryFormats::Raw(data_inner) => DataRecord::Raw(data_inner),
+                frcv::FrcBinaryFormats::MsgPack(data_inner) => DataRecord::Raw(data_inner),
+                frcv::FrcBinaryFormats::Protobuf(data_inner) => DataRecord::Raw(data_inner)
+            },
+            FrcValue::Bool(data) => DataRecord::Boolean(data),
+            FrcValue::Int(data) => DataRecord::Integer(data),
+            FrcValue::Float(data) => DataRecord::Float(data),
+            FrcValue::Double(data) => DataRecord::Double(data),
+            FrcValue::String(data) => DataRecord::String(data),
+            FrcValue::BoolArray(data) => DataRecord::BooleanArray(data),
+            FrcValue::IntArray(data) => DataRecord::IntegerArray(data),
+            FrcValue::FloatArray(data) => DataRecord::FloatArray(data),
+            FrcValue::DoubleArray(data) => DataRecord::DoubleArray(data),
+            FrcValue::StringArray(data) => DataRecord::StringArray(data),
         }
     }
 }

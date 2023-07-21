@@ -13,53 +13,93 @@ use crate::{
     records::{parse_records, ControlRecord, Record},
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp,
 };
+use frcv::FrcValue;
 use single_value_channel::{channel_starting_with as single_channel, Receiver as SingleReceiver};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
-pub enum DataLogValue {
-    Raw(Vec<u8>),
-    Boolean(bool),
-    Integer(i64),
-    Float(f32),
-    Double(f64),
-    String(String),
-    BooleanArray(Vec<bool>),
-    IntegerArray(Vec<i64>),
-    FloatArray(Vec<f32>),
-    DoubleArray(Vec<f64>),
-    StringArray(Vec<String>),
+// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+// pub enum DataLogValue {
+//     Raw(Vec<u8>),
+//     Boolean(bool),
+//     Integer(i64),
+//     Float(f32),
+//     Double(f64),
+//     String(String),
+//     BooleanArray(Vec<bool>),
+//     IntegerArray(Vec<i64>),
+//     FloatArray(Vec<f32>),
+//     DoubleArray(Vec<f64>),
+//     StringArray(Vec<String>),
+// }
+
+// impl DataLogValue {
+//     pub fn get_data_type(&self) -> String {
+//         match self {
+//             DataLogValue::Raw(_) => "raw".to_string(),
+//             DataLogValue::Boolean(_) => "boolean".to_string(),
+//             DataLogValue::Integer(_) => "int64".to_string(),
+//             DataLogValue::Float(_) => "float".to_string(),
+//             DataLogValue::Double(_) => "double".to_string(),
+//             DataLogValue::String(_) => "string".to_string(),
+//             DataLogValue::BooleanArray(_) => "boolean[]".to_string(),
+//             DataLogValue::IntegerArray(_) => "int64[]".to_string(),
+//             DataLogValue::FloatArray(_) => "float[]".to_string(),
+//             DataLogValue::DoubleArray(_) => "double[]".to_string(),
+//             DataLogValue::StringArray(_) => "string[]".to_string(),
+//         }
+//     }
+
+//     pub fn matches_type(&self, e_type: &String) -> bool {
+//         match self {
+//             DataLogValue::Raw(_) => e_type == "raw",
+//             DataLogValue::Boolean(_) => e_type == "boolean",
+//             DataLogValue::Integer(_) => e_type == "int64",
+//             DataLogValue::Float(_) => e_type == "float",
+//             DataLogValue::Double(_) => e_type == "double",
+//             DataLogValue::String(_) => e_type == "string",
+//             DataLogValue::BooleanArray(_) => e_type == "boolean[]",
+//             DataLogValue::IntegerArray(_) => e_type == "int64[]",
+//             DataLogValue::FloatArray(_) => e_type == "float[]",
+//             DataLogValue::DoubleArray(_) => e_type == "double[]",
+//             DataLogValue::StringArray(_) => e_type == "string[]",
+//         }
+//     }
+// }
+
+pub(crate) trait DatalogStrType {
+    fn get_data_type(&self) -> String;
+    fn matches_type(&self, e_type: &String) -> bool;
 }
 
-impl DataLogValue {
-    pub fn get_data_type(&self) -> String {
+impl DatalogStrType for FrcValue {
+    fn get_data_type(&self) -> String {
         match self {
-            DataLogValue::Raw(_) => "raw".to_string(),
-            DataLogValue::Boolean(_) => "boolean".to_string(),
-            DataLogValue::Integer(_) => "int64".to_string(),
-            DataLogValue::Float(_) => "float".to_string(),
-            DataLogValue::Double(_) => "double".to_string(),
-            DataLogValue::String(_) => "string".to_string(),
-            DataLogValue::BooleanArray(_) => "boolean[]".to_string(),
-            DataLogValue::IntegerArray(_) => "int64[]".to_string(),
-            DataLogValue::FloatArray(_) => "float[]".to_string(),
-            DataLogValue::DoubleArray(_) => "double[]".to_string(),
-            DataLogValue::StringArray(_) => "string[]".to_string(),
+            Self::Binary(_) => "raw".to_string(),
+            Self::Bool(_) => "boolean".to_string(),
+            Self::Int(_) => "int64".to_string(),
+            Self::Float(_) => "float".to_string(),
+            Self::Double(_) => "double".to_string(),
+            Self::String(_) => "string".to_string(),
+            Self::BoolArray(_) => "boolean[]".to_string(),
+            Self::IntArray(_) => "int64[]".to_string(),
+            Self::FloatArray(_) => "float[]".to_string(),
+            Self::DoubleArray(_) => "double[]".to_string(),
+            Self::StringArray(_) => "string[]".to_string(),
         }
     }
 
-    pub fn matches_type(&self, e_type: &String) -> bool {
+    fn matches_type(&self, e_type: &String) -> bool {
         match self {
-            DataLogValue::Raw(_) => e_type == "raw",
-            DataLogValue::Boolean(_) => e_type == "boolean",
-            DataLogValue::Integer(_) => e_type == "int64",
-            DataLogValue::Float(_) => e_type == "float",
-            DataLogValue::Double(_) => e_type == "double",
-            DataLogValue::String(_) => e_type == "string",
-            DataLogValue::BooleanArray(_) => e_type == "boolean[]",
-            DataLogValue::IntegerArray(_) => e_type == "int64[]",
-            DataLogValue::FloatArray(_) => e_type == "float[]",
-            DataLogValue::DoubleArray(_) => e_type == "double[]",
-            DataLogValue::StringArray(_) => e_type == "string[]",
+            Self::Binary(_) => e_type == "raw",
+            Self::Bool(_) => e_type == "boolean",
+            Self::Int(_) => e_type == "int64",
+            Self::Float(_) => e_type == "float",
+            Self::Double(_) => e_type == "double",
+            Self::String(_) => e_type == "string",
+            Self::BoolArray(_) => e_type == "boolean[]",
+            Self::IntArray(_) => e_type == "int64[]",
+            Self::FloatArray(_) => e_type == "float[]",
+            Self::DoubleArray(_) => e_type == "double[]",
+            Self::StringArray(_) => e_type == "string[]",
         }
     }
 }
@@ -75,7 +115,7 @@ pub enum EntryLifeStatus {
 pub(crate) struct Entry {
     pub name: EntryName,
     pub id: EntryId,
-    pub marks: BTreeMap<WpiTimestamp, DataLogValue>,
+    pub marks: BTreeMap<WpiTimestamp, FrcValue>,
     pub type_str: EntryType,
     pub metadata: EntryMetadata,
     pub lifetime: EntryLifeStatus,
@@ -102,7 +142,7 @@ impl Entry {
         }
     }
 
-    pub(crate) fn add_mark(&mut self, timestamp: WpiTimestamp, value: DataLogValue) {
+    pub(crate) fn add_mark(&mut self, timestamp: WpiTimestamp, value: FrcValue) {
         self.marks.insert(timestamp, value);
         self.unflushed_timestamps.insert(timestamp);
     }
@@ -506,7 +546,7 @@ impl DataLog {
     pub fn append_to_entry(
         &mut self,
         entry_name: String,
-        value: DataLogValue,
+        value: FrcValue,
     ) -> Result<(), DatalogError> {
         self.append_to_entry_timestamp(entry_name, value, now())
     }
@@ -514,7 +554,7 @@ impl DataLog {
     pub fn append_to_entry_timestamp(
         &mut self,
         entry_name: String,
-        value: DataLogValue,
+        value: FrcValue,
         timestamp: WpiTimestamp,
     ) -> Result<(), DatalogError> {
         if self.io_type == IOType::ReadOnly {
@@ -599,7 +639,7 @@ impl DataLog {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DataLogResponse {
-    pub value: DataLogValue,
+    pub value: FrcValue,
     pub timestamp: WpiTimestamp,
     pub entry_id: EntryId,
 }
@@ -843,7 +883,7 @@ impl DataLogDaemonSender {
     pub fn append_to_entry(
         &self,
         name: EntryName,
-        value: DataLogValue,
+        value: FrcValue,
     ) -> Result<(), DatalogError> {
         if self.closed {
             return Err(DatalogError::DataLogDaemonClosed);
@@ -856,7 +896,7 @@ impl DataLogDaemonSender {
     pub fn append_to_entry_with_timestamp(
         &self,
         name: EntryName,
-        value: DataLogValue,
+        value: FrcValue,
         timestamp: WpiTimestamp,
     ) -> Result<(), DatalogError> {
         if self.closed {

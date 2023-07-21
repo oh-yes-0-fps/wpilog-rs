@@ -1,6 +1,8 @@
 use std::{path::PathBuf, collections::HashMap, fs::File};
 
-use crate::{log::{CreateDataLogConfig, DataLog, OpenDataLogConfig, IOType, DataLogValue}, util::UInts, records::{Record, DataRecord}, now};
+use frcv::{FrcValue, FrcBinaryFormats};
+
+use crate::{log::{CreateDataLogConfig, DataLog, OpenDataLogConfig, IOType, DatalogStrType}, util::UInts, records::{Record, DataRecord}, now};
 
 #[test]
 fn test_uint_enum() {
@@ -25,7 +27,7 @@ fn test_uint_enum() {
 }
 
 
-fn test_record_type(payload: DataLogValue) {
+fn test_record_type(payload: FrcValue) {
     let timestamp = now();
     let entry_id = 2u32.pow(24);
     let timestamp_size = UInts::from(timestamp).get_min_size().get_byte_count();
@@ -48,23 +50,23 @@ fn test_record_type(payload: DataLogValue) {
     assert_eq!(rerecord.get_id(), record.get_id());
     assert_eq!(rerecord.get_timestamp(), record.get_timestamp());
     assert_eq!(
-        DataLogValue::from(rerecord.as_data().unwrap().clone()),
-        DataLogValue::from(record.as_data().unwrap().clone()));
+        FrcValue::from(rerecord.as_data().unwrap().clone()),
+        FrcValue::from(record.as_data().unwrap().clone()));
 }
 
 #[test]
 fn test_record_types() {
-    test_record_type(DataLogValue::Boolean(true));
-    test_record_type(DataLogValue::Integer(10));
-    test_record_type(DataLogValue::Float(10.0));
-    test_record_type(DataLogValue::Double(10.0));
-    test_record_type(DataLogValue::String(String::from("owo")));
-    test_record_type(DataLogValue::Raw(vec![1, 2, 3]));
-    test_record_type(DataLogValue::BooleanArray(vec![true, false, true]));
-    test_record_type(DataLogValue::IntegerArray(vec![1, 2, 3]));
-    test_record_type(DataLogValue::FloatArray(vec![1.0, 2.0, 3.0]));
-    test_record_type(DataLogValue::DoubleArray(vec![1.0, 2.0, 3.0]));
-    test_record_type(DataLogValue::StringArray(vec![String::from("owo"), String::from("uwu")]));
+    test_record_type(FrcValue::Bool(true));
+    test_record_type(FrcValue::Int(10));
+    test_record_type(FrcValue::Float(10.0));
+    test_record_type(FrcValue::Double(10.0));
+    test_record_type(FrcValue::String(String::from("owo")));
+    test_record_type(FrcValue::Binary(FrcBinaryFormats::Raw(vec![1, 2, 3])));
+    test_record_type(FrcValue::BoolArray(vec![true, false, true]));
+    test_record_type(FrcValue::IntArray(vec![1, 2, 3]));
+    test_record_type(FrcValue::FloatArray(vec![1.0, 2.0, 3.0]));
+    test_record_type(FrcValue::DoubleArray(vec![1.0, 2.0, 3.0]));
+    test_record_type(FrcValue::StringArray(vec![String::from("owo"), String::from("uwu")]));
 } 
 
 #[test]
@@ -99,13 +101,13 @@ fn test_read_and_save() {
         entry_name.clone(),
         String::from("double"), 
         String::from("{ metadata: true}")).unwrap();
-    data_log.append_to_entry(entry_name.clone(), DataLogValue::Double(10.0)).unwrap();
-    data_log.append_to_entry(entry_name.clone(), DataLogValue::Double(20.0)).unwrap();
-    data_log.append_to_entry(entry_name.clone(), DataLogValue::Double(30.0)).unwrap();
+    data_log.append_to_entry(entry_name.clone(), FrcValue::Double(10.0)).unwrap();
+    data_log.append_to_entry(entry_name.clone(), FrcValue::Double(20.0)).unwrap();
+    data_log.append_to_entry(entry_name.clone(), FrcValue::Double(30.0)).unwrap();
     data_log.kill_entry(entry_name.clone()).unwrap();
 
     let last_val = data_log.get_last_entry_value(entry_name.clone()).unwrap();
-    assert_eq!(last_val.value, DataLogValue::Double(30.0));
+    assert_eq!(last_val.value, FrcValue::Double(30.0));
 
     data_log.flush().unwrap();
 
@@ -120,7 +122,7 @@ fn test_read_and_save() {
     let data_log = DataLog::open(config).unwrap();
 
     let last_val = data_log.get_last_entry_value(entry_name).unwrap();
-    assert_eq!(last_val.value, DataLogValue::Double(30.0));
+    assert_eq!(last_val.value, FrcValue::Double(30.0));
 
     DataLog::delete(file_path).unwrap();
 }
