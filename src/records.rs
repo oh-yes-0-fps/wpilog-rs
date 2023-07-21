@@ -207,7 +207,7 @@ impl Record {
             return Err(DatalogError::RecordReaderOutOfBounds("Timestamp"));
         }
 
-        let type_str = type_map
+        let mut type_str = type_map
             .get(&u32::from(id))
             .unwrap_or(&"unknown".to_string())
             .clone();
@@ -215,9 +215,10 @@ impl Record {
         let is_control = u32::from(id) == 0u32;
 
         if !SUPPORTED_TYPES.contains(&type_str.as_str()) && !is_control {
-            return Err(DatalogError::RecordType(
-                "Unsupported type: ".to_string() + &type_str,
-            ));
+            // return Err(DatalogError::RecordType(
+            //     "Unsupported type: ".to_string() + &type_str,
+            // ));
+            type_str = "raw".to_string();
         }
 
         let record_payload = reader.the_rest();
