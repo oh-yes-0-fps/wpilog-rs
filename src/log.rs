@@ -13,57 +13,9 @@ use crate::{
     records::{parse_records, ControlRecord, Record},
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp,
 };
-use frcv::FrcValue;
+use frcv::{FrcValue, FrcTimestamp};
 use single_value_channel::{channel_starting_with as single_channel, Receiver as SingleReceiver};
 
-// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
-// pub enum DataLogValue {
-//     Raw(Vec<u8>),
-//     Boolean(bool),
-//     Integer(i64),
-//     Float(f32),
-//     Double(f64),
-//     String(String),
-//     BooleanArray(Vec<bool>),
-//     IntegerArray(Vec<i64>),
-//     FloatArray(Vec<f32>),
-//     DoubleArray(Vec<f64>),
-//     StringArray(Vec<String>),
-// }
-
-// impl DataLogValue {
-//     pub fn get_data_type(&self) -> String {
-//         match self {
-//             DataLogValue::Raw(_) => "raw".to_string(),
-//             DataLogValue::Boolean(_) => "boolean".to_string(),
-//             DataLogValue::Integer(_) => "int64".to_string(),
-//             DataLogValue::Float(_) => "float".to_string(),
-//             DataLogValue::Double(_) => "double".to_string(),
-//             DataLogValue::String(_) => "string".to_string(),
-//             DataLogValue::BooleanArray(_) => "boolean[]".to_string(),
-//             DataLogValue::IntegerArray(_) => "int64[]".to_string(),
-//             DataLogValue::FloatArray(_) => "float[]".to_string(),
-//             DataLogValue::DoubleArray(_) => "double[]".to_string(),
-//             DataLogValue::StringArray(_) => "string[]".to_string(),
-//         }
-//     }
-
-//     pub fn matches_type(&self, e_type: &String) -> bool {
-//         match self {
-//             DataLogValue::Raw(_) => e_type == "raw",
-//             DataLogValue::Boolean(_) => e_type == "boolean",
-//             DataLogValue::Integer(_) => e_type == "int64",
-//             DataLogValue::Float(_) => e_type == "float",
-//             DataLogValue::Double(_) => e_type == "double",
-//             DataLogValue::String(_) => e_type == "string",
-//             DataLogValue::BooleanArray(_) => e_type == "boolean[]",
-//             DataLogValue::IntegerArray(_) => e_type == "int64[]",
-//             DataLogValue::FloatArray(_) => e_type == "float[]",
-//             DataLogValue::DoubleArray(_) => e_type == "double[]",
-//             DataLogValue::StringArray(_) => e_type == "string[]",
-//         }
-//     }
-// }
 
 pub(crate) trait DatalogStrType {
     fn get_data_type(&self) -> String;
@@ -281,7 +233,9 @@ pub struct DataLog {
     id_to_name_map: EntryIdToNameMap,
     entries: HashMap<EntryId, Entry>,
     finished_entries: HashSet<EntryId>,
-    summary: HashMap<EntryName, EntryType>
+    summary: HashMap<EntryName, EntryType>,
+    //config
+    low_memory_mode: bool,
 }
 
 impl DataLog {
@@ -316,7 +270,8 @@ impl DataLog {
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
-            summary: HashMap::new()
+            summary: HashMap::new(),
+            low_memory_mode: false,
         };
         let file = OpenOptions::new()
             .read(true)
@@ -365,7 +320,8 @@ impl DataLog {
             id_to_name_map: EntryIdToNameMap::new(),
             entries: HashMap::new(),
             finished_entries: HashSet::new(),
-            summary: HashMap::new()
+            summary: HashMap::new(),
+            low_memory_mode: false,
         };
 
         let file = OpenOptions::new()
@@ -520,17 +476,25 @@ impl DataLog {
         }
         self.fs_file.as_mut().unwrap().write_all(&buf).unwrap();
         self.fs_file.as_mut().unwrap().flush().unwrap();
+        if self.low_memory_mode {
+            self.free_old_data(now());
+        }
         Ok(())
     }
 
-    pub fn as_daemon(self) -> DataLogDaemon {
-        DataLogDaemon::spawn(self, 4.0)
+    pub fn as_daemon(self, max_data_age_hrs: Option<f64>) -> DataLogDaemon {
+        DataLogDaemon::spawn(self, max_data_age_hrs)
     }
 
     pub fn free_old_data(&mut self, before: WpiTimestamp) {
         for entry in self.entries.values_mut() {
             entry.free_old_marks(before);
         }
+    }
+
+    pub fn enable_low_mem_mode(mut self) -> Self {
+        self.low_memory_mode = true;
+        self
     }
 }
 
@@ -925,17 +889,29 @@ pub struct DataLogDaemon {
     summary: SingleReceiver<HashMap<EntryName, EntryType>>
 }
 impl DataLogDaemon {
-    fn spawn(datalog: DataLog, max_data_age_hrs: f64) -> DataLogDaemon {
+    fn spawn(datalog: DataLog, max_data_age_hrs: Option<f64>) -> DataLogDaemon {
         let (sender, receiver) = channel::<(EntryName, Record)>();
         let (updatee, updater) = single_channel::<Vec<DatalogEntryResponse>>(Vec::new());
         let (summary_updatee, summary_updater) = single_channel::<HashMap<EntryName, EntryType>>(HashMap::new());
         let thread_handle = thread::Builder::new()
             .name("DataLogDaemon".to_owned())
             .spawn(move || {
-            let max_age = (max_data_age_hrs * 60.0 * 60.0 * 1000.0 * 1000.0) as WpiTimestamp;
             let thirty_min = 30u64 * 60 * 1000 * 1000;
+            let max_age;
+            match max_data_age_hrs {
+                Some(age) => {
+                    max_age = (age * 60.0 * 60.0 * 1000.0 * 1000.0) as FrcTimestamp + thirty_min;
+                }
+                None => {
+                    max_age = 0;
+                }
+            }
             let mut last_free = now();
-            let mut log = datalog;
+            let mut log = if max_data_age_hrs.is_none() {
+                datalog.enable_low_mem_mode()
+            } else {
+                datalog
+            };
             let mut cycle_count = 0;
             loop {
                 if let Ok(data) = receiver.try_recv() {
@@ -962,9 +938,11 @@ impl DataLogDaemon {
                     }
                     cycle_count += 1;
                 }
-                if now() - last_free > max_age + thirty_min{
-                    log.free_old_data(now() - max_age);
-                    last_free = now() - max_age;
+                if max_age > 0 {
+                    if now() - last_free > max_age {
+                        log.free_old_data(now() - max_age);
+                        last_free = now() - max_age;
+                    }
                 }
             }
         }).unwrap();
