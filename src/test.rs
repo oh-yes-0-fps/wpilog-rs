@@ -1,6 +1,6 @@
 use std::{path::PathBuf, collections::HashMap, fs::File};
 
-use frcv::{FrcValue, FrcBinaryFormats};
+use frc_value::{FrcValue, FrcBinaryFormats};
 
 use crate::{log::{CreateDataLogConfig, DataLog, OpenDataLogConfig, IOType, DatalogStrType}, util::UInts, records::{Record, DataRecord}, now};
 
@@ -25,7 +25,6 @@ fn test_uint_enum() {
     let decoded_timestamp = UInts::from_binary(bytes);
     assert_eq!(u64::from(decoded_timestamp), u64::from(min_size_timestamp));
 }
-
 
 fn test_record_type(payload: FrcValue) {
     let timestamp = now();
@@ -56,13 +55,13 @@ fn test_record_type(payload: FrcValue) {
 
 #[test]
 fn test_record_types() {
-    test_record_type(FrcValue::Bool(true));
+    test_record_type(FrcValue::Boolean(true));
     test_record_type(FrcValue::Int(10));
     test_record_type(FrcValue::Float(10.0));
     test_record_type(FrcValue::Double(10.0));
     test_record_type(FrcValue::String(String::from("owo")));
     test_record_type(FrcValue::Binary(FrcBinaryFormats::Raw(vec![1, 2, 3])));
-    test_record_type(FrcValue::BoolArray(vec![true, false, true]));
+    test_record_type(FrcValue::BooleanArray(vec![true, false, true]));
     test_record_type(FrcValue::IntArray(vec![1, 2, 3]));
     test_record_type(FrcValue::FloatArray(vec![1.0, 2.0, 3.0]));
     test_record_type(FrcValue::DoubleArray(vec![1.0, 2.0, 3.0]));

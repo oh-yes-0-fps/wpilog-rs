@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use frcv::FrcValue;
+use frc_value::FrcValue;
 
 use crate::{
     error::{log_result, DatalogError},
@@ -40,12 +40,16 @@ fn chunk_by_record(all_bytes: LeBytes) -> Vec<LeBytes> {
     let mut reader = RecordByteReader::new(all_bytes);
     while !reader.is_empty() {
         let mut chunk = Vec::new();
-        let bit_field = reader.u8().unwrap();
-        chunk.push(bit_field);
+        let bit_field = RecordElementBitfield::from_bits_truncate(reader.u8().unwrap());
+        chunk.push(bit_field.bits());
 
-        let id_length = (bit_field & 0b11) + 1;
-        let payload_length = ((bit_field >> 2) & 0b11) + 1;
-        let timestamp_length = ((bit_field >> 4) & 0b111) + 1;
+        // let id_length = (bit_field & 0b11) + 1;
+        // let payload_length = ((bit_field >> 2) & 0b11) + 1;
+        // let timestamp_length = ((bit_field >> 4) & 0b111) + 1;
+
+        let id_length = bit_field.id_length();
+        let payload_length = bit_field.payload_length();
+        let timestamp_length = bit_field.timestamp_length();
 
         if reader.bytes_left() < (id_length + timestamp_length + payload_length) as usize {
             cfg_tracing! {
@@ -95,9 +99,65 @@ pub fn parse_records(all_bytes: LeBytes) -> Vec<Record> {
     records
 }
 
+
+bitflags! {
+    /// The header length bitfield encodes the length of each header field as follows (starting from the least significant bit):
+    /// 2-bit entry ID length (00 = 1 byte, 01 = 2 bytes, 10 = 3 bytes, 11 = 4 bytes)
+    /// 2-bit payload size length (00 = 1 byte, to 11 = 4 bytes)
+    /// 3-bit timestamp length (000 = 1 byte, to 111 = 8 bytes)
+    /// 1-bit spare (zero)
+    #[derive(Debug, Clone, Copy)]
+    pub struct RecordElementBitfield: u8 {
+        const ID_1 = 0b01;
+        const ID_2 = 0b10;
+        const ID_3 = 0b11;
+        const PAYLOAD_1 = 0b0100;
+        const PAYLOAD_2 = 0b1000;
+        const PAYLOAD_3 = 0b1100;
+        const TIMESTAMP_1 = 0b10000;
+        const TIMESTAMP_2 = 0b100000;
+        const TIMESTAMP_3 = 0b110000;
+        const SPARE = 0b1000000;
+    }
+}
+
+impl RecordElementBitfield {
+    pub fn id_length(&self) -> u8 {
+        match self.bits() & 0b11 {
+            0b00 => 1,
+            0b01 => 2,
+            0b10 => 3,
+            0b11 => 4,
+            _ => unreachable!(),
+        }
+    }
+    pub fn payload_length(&self) -> u8 {
+        match (self.bits() >> 2) & 0b11 {
+            0b00 => 1,
+            0b01 => 2,
+            0b10 => 3,
+            0b11 => 4,
+            _ => unreachable!(),
+        }
+    }
+    pub fn timestamp_length(&self) -> u8 {
+        match (self.bits() >> 4) & 0b111 {
+            0b000 => 1,
+            0b001 => 2,
+            0b010 => 3,
+            0b011 => 4,
+            0b100 => 5,
+            0b101 => 6,
+            0b110 => 7,
+            0b111 => 8,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RecordElementSizes {
-    pub bit_field: LeByte,
+    pub bit_field: RecordElementBitfield,
     pub timestamp: UInts,
     pub id: UInts,
     pub payload: UInts,
@@ -107,15 +167,15 @@ impl RecordElementSizes {
         let wrapped_timestamp = UInts::from(timestamp).get_min_size();
         let wrapped_id = UInts::from(id).get_min_size();
         let wrapped_payload = UInts::from(payload).get_min_size();
-        // The header length bitfield encodes the length of each header field as follows (starting from the least significant bit):
-        // 2-bit entry ID length (00 = 1 byte, 01 = 2 bytes, 10 = 3 bytes, 11 = 4 bytes)
-        // 2-bit payload size length (00 = 1 byte, to 11 = 4 bytes)
-        // 3-bit timestamp length (000 = 1 byte, to 111 = 8 bytes)
-        // 1-bit spare (zero)
         // create bitfield as little endian byte
-        let bit_field = ((wrapped_id.get_byte_count() - 1) as LeByte) & 0b11
-            | (((wrapped_payload.get_byte_count() - 1) as LeByte) & 0b11) << 2
-            | (((wrapped_timestamp.get_byte_count() - 1) as LeByte) & 0b111) << 4;
+        // let bit_field = ((wrapped_id.get_byte_count() - 1) as LeByte) & 0b11
+        //     | (((wrapped_payload.get_byte_count() - 1) as LeByte) & 0b11) << 2
+        //     | (((wrapped_timestamp.get_byte_count() - 1) as LeByte) & 0b111) << 4;
+        let bit_field = RecordElementBitfield::from_bits_truncate(
+            ((wrapped_id.get_byte_count() - 1) as LeByte) & 0b11
+                | (((wrapped_payload.get_byte_count() - 1) as LeByte) & 0b11) << 2
+                | (((wrapped_timestamp.get_byte_count() - 1) as LeByte) & 0b111) << 4,
+        );
         Self {
             bit_field,
             timestamp: wrapped_timestamp,
@@ -305,7 +365,7 @@ impl ControlRecord {
                 let element_sizes = RecordElementSizes::create(timestamp, 0, payload_len as u32);
 
                 let mut bytes = Vec::new();
-                bytes.push(element_sizes.bit_field); //1-byte header length bitfield
+                bytes.push(element_sizes.bit_field.bits()); //1-byte header length bitfield
                 bytes.push(0u8); //1 to 4-byte (32-bit) entry ID (0 int for control records)
                 bytes.extend(element_sizes.payload.to_binary()); // 1 to 4-byte (32-bit) payload size (in bytes)
                 bytes.extend(element_sizes.timestamp.to_binary()); // 1 to 8-byte (64-bit) timestamp (in microseconds)
@@ -325,7 +385,7 @@ impl ControlRecord {
                 let element_sizes = RecordElementSizes::create(timestamp, 0, payload_len);
 
                 let mut bytes = Vec::new();
-                bytes.push(element_sizes.bit_field); //1-byte header length bitfield
+                bytes.push(element_sizes.bit_field.bits()); //1-byte header length bitfield
                 bytes.push(0u8); //1 to 4-byte (32-bit) entry ID (0 int for control records)
                 bytes.extend(element_sizes.payload.to_binary()); // 1 to 4-byte (32-bit) payload size (in bytes)
                 bytes.extend(element_sizes.timestamp.to_binary()); // 1 to 8-byte (64-bit) timestamp (in microseconds)
@@ -339,7 +399,7 @@ impl ControlRecord {
                 let element_sizes = RecordElementSizes::create(timestamp, 0, payload_len as u32);
 
                 let mut bytes = Vec::new();
-                bytes.push(element_sizes.bit_field); //1-byte header length bitfield
+                bytes.push(element_sizes.bit_field.bits()); //1-byte header length bitfield
                 bytes.push(0u8); //1 to 4-byte (32-bit) entry ID (0 int for control records)
                 bytes.extend(element_sizes.payload.to_binary()); // 1 to 4-byte (32-bit) payload size (in bytes)
                 bytes.extend(element_sizes.timestamp.to_binary()); // 1 to 8-byte (64-bit) timestamp (in microseconds)
@@ -470,7 +530,7 @@ impl DataRecord {
         let element_sizes = RecordElementSizes::create(timestamp, id, inner_bytes.len() as u32);
 
         let mut bytes = Vec::new();
-        bytes.push(element_sizes.bit_field); //1-byte header length bitfield
+        bytes.push(element_sizes.bit_field.bits()); //1-byte header length bitfield
         bytes.extend(element_sizes.id.to_binary()); //1 to 4-byte (32-bit) entry ID
         bytes.extend(element_sizes.payload.to_binary()); // 1 to 4-byte (32-bit) payload size (in bytes)
         bytes.extend(element_sizes.timestamp.to_binary()); // 1 to 8-byte (64-bit) timestamp (in microseconds)
@@ -640,13 +700,13 @@ impl DataRecord {
 impl From<DataRecord> for FrcValue {
     fn from(record: DataRecord) -> Self {
         match record {
-            DataRecord::Raw(data) => FrcValue::Binary(frcv::FrcBinaryFormats::Raw(data)),
-            DataRecord::Boolean(data) => FrcValue::Bool(data),
+            DataRecord::Raw(data) => FrcValue::Binary(frc_value::FrcBinaryFormats::Raw(data)),
+            DataRecord::Boolean(data) => FrcValue::Boolean(data),
             DataRecord::Integer(data) => FrcValue::Int(data),
             DataRecord::Float(data) => FrcValue::Float(data),
             DataRecord::Double(data) => FrcValue::Double(data),
             DataRecord::String(data) => FrcValue::String(data),
-            DataRecord::BooleanArray(data) => FrcValue::BoolArray(data),
+            DataRecord::BooleanArray(data) => FrcValue::BooleanArray(data),
             DataRecord::IntegerArray(data) => FrcValue::IntArray(data),
             DataRecord::FloatArray(data) => FrcValue::FloatArray(data),
             DataRecord::DoubleArray(data) => FrcValue::DoubleArray(data),
@@ -659,16 +719,16 @@ impl From<FrcValue> for DataRecord {
     fn from(value: FrcValue) -> Self {
         match value {
             FrcValue::Binary(data) => match data {
-                frcv::FrcBinaryFormats::Raw(data_inner) => DataRecord::Raw(data_inner),
-                frcv::FrcBinaryFormats::MsgPack(data_inner) => DataRecord::Raw(data_inner),
-                frcv::FrcBinaryFormats::Protobuf(data_inner) => DataRecord::Raw(data_inner)
+                frc_value::FrcBinaryFormats::Raw(data_inner) => DataRecord::Raw(data_inner),
+                frc_value::FrcBinaryFormats::MsgPack(data_inner) => DataRecord::Raw(data_inner),
+                frc_value::FrcBinaryFormats::Protobuf(data_inner) => DataRecord::Raw(data_inner)
             },
-            FrcValue::Bool(data) => DataRecord::Boolean(data),
+            FrcValue::Boolean(data) => DataRecord::Boolean(data),
             FrcValue::Int(data) => DataRecord::Integer(data),
             FrcValue::Float(data) => DataRecord::Float(data),
             FrcValue::Double(data) => DataRecord::Double(data),
             FrcValue::String(data) => DataRecord::String(data),
-            FrcValue::BoolArray(data) => DataRecord::BooleanArray(data),
+            FrcValue::BooleanArray(data) => DataRecord::BooleanArray(data),
             FrcValue::IntArray(data) => DataRecord::IntegerArray(data),
             FrcValue::FloatArray(data) => DataRecord::FloatArray(data),
             FrcValue::DoubleArray(data) => DataRecord::DoubleArray(data),

@@ -9,16 +9,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
+name = "bitflags"
+version = "2.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "630be753d4e58660abd17930c71b647fe46c27ea6b63cc59e1e3851406972e42"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "frcv"
-version = "0.1.0"
+name = "frc-value"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "071dc9833ae3e8126eb597c7903ee5dbd5a953a881b4341813658520346cfb57"
+checksum = "69e8bc458fcbb509e7cc9abe10ca6c63a92cb88a31314c5de8f28fa253646ba2"
 dependencies = [
  "serde",
  "tracing",
@@ -284,7 +290,8 @@ name = "wpilog"
 version = "0.1.2"
 dependencies = [
  "bimap",
- "frcv",
+ "bitflags",
+ "frc-value",
  "serde",
  "serde_json",
  "single_value_channel",

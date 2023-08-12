@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 
 #[macro_use]
 pub mod macros;
+#[macro_use]
+extern crate bitflags;
 
 pub mod error;
 pub mod log;

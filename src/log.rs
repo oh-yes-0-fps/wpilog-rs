@@ -13,7 +13,7 @@ use crate::{
     records::{parse_records, ControlRecord, Record},
     EntryId, EntryIdToNameMap, EntryMetadata, EntryName, EntryType, WpiTimestamp,
 };
-use frcv::{FrcValue, FrcTimestamp};
+use frc_value::{FrcValue, FrcTimestamp};
 use single_value_channel::{channel_starting_with as single_channel, Receiver as SingleReceiver};
 
 
@@ -26,12 +26,12 @@ impl DatalogStrType for FrcValue {
     fn get_data_type(&self) -> String {
         match self {
             Self::Binary(_) => "raw".to_string(),
-            Self::Bool(_) => "boolean".to_string(),
+            Self::Boolean(_) => "boolean".to_string(),
             Self::Int(_) => "int64".to_string(),
             Self::Float(_) => "float".to_string(),
             Self::Double(_) => "double".to_string(),
             Self::String(_) => "string".to_string(),
-            Self::BoolArray(_) => "boolean[]".to_string(),
+            Self::BooleanArray(_) => "boolean[]".to_string(),
             Self::IntArray(_) => "int64[]".to_string(),
             Self::FloatArray(_) => "float[]".to_string(),
             Self::DoubleArray(_) => "double[]".to_string(),
@@ -42,12 +42,12 @@ impl DatalogStrType for FrcValue {
     fn matches_type(&self, e_type: &String) -> bool {
         match self {
             Self::Binary(_) => e_type == "raw",
-            Self::Bool(_) => e_type == "boolean",
+            Self::Boolean(_) => e_type == "boolean",
             Self::Int(_) => e_type == "int64",
             Self::Float(_) => e_type == "float",
             Self::Double(_) => e_type == "double",
             Self::String(_) => e_type == "string",
-            Self::BoolArray(_) => e_type == "boolean[]",
+            Self::BooleanArray(_) => e_type == "boolean[]",
             Self::IntArray(_) => e_type == "int64[]",
             Self::FloatArray(_) => e_type == "float[]",
             Self::DoubleArray(_) => e_type == "double[]",
